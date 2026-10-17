@@ -1,5 +1,18 @@
-# Data
-/data/
+# Datos de MiBici: no se versionan, se reconstruyen con la ingesta. Solo el manifiesto
+# (filas y hash de cada archivo) va a Git como versión de los datos
+/data/*
+!/data/manifest.json
+
+# MLflow: base de tracking, corridas y artefactos locales
+mlflow.db
+mlruns/
+mlartifacts/
+
+# Modelos serializados: se registran en MLflow, no en Git
+/models/*
+!/models/.gitkeep
+*.pkl
+*.joblib
 
 # Mac OS-specific storage files
 .DS_Store

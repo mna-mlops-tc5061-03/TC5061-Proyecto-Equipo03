@@ -5,7 +5,7 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "mi_bici"
 version = "0.0.1"
-description = "A short description of the project."
+description = "Propuesta y base reproducible de ML para el sistema MiBici"
 authors = [
   { name = "TC5061 Equipo 3" },
 ]

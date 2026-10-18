@@ -9,11 +9,13 @@ import pandas as pd
 import pyarrow.parquet as pq
 import requests
 from tqdm import tqdm
+# pyrefly: ignore[missing-import]
 import typer
 
 from mi_bici.config import (
     COLUMN_PATTERNS_REGEX,
     ESTACIONES_FILE,
+    ESTACIONES_METADATA_FILE,
     MANIFEST_FILE,
     PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
@@ -21,6 +23,7 @@ from mi_bici.config import (
     URL_STATIONS,
     URLS_VIAJES,
     VIAJES_DIR,
+    VIAJES_METADATA_FILE,
 )
 
 app = typer.Typer()
@@ -229,6 +232,10 @@ def load_processed_travels(columns: list[str] | None = None) -> pd.DataFrame:
     """Carga el dataset completo de viajes procesados en formato parquet."""
     if not VIAJES_DIR.exists():
         raise FileNotFoundError(f"No se encontró el directorio de viajes procesados: {VIAJES_DIR}")
+    # Limpiar metadata.json residual dentro del directorio particionado si existiera
+    legacy_meta = VIAJES_DIR / "metadata.json"
+    if legacy_meta.exists():
+        legacy_meta.unlink()
     return pd.read_parquet(VIAJES_DIR, columns=columns)
 
 
@@ -328,7 +335,7 @@ def compute_file_md5(file_path: Path) -> str:
 
 
 def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> dict:
-    """Calcula el hash MD5 y metadatos de un archivo o carpeta parquet y crea un JSON en la misma carpeta."""
+    """Calcula el hash MD5 y metadatos de un archivo o carpeta parquet y crea un JSON de metadatos asociado."""
     if not target.exists():
         raise FileNotFoundError(f"Ruta objetivo no encontrada: {target}")
 
@@ -354,6 +361,11 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             output_json = target.parent / f"{target.stem}_metadata.json"
 
     else:
+        # Asegurar que no quede un metadata.json dentro de la carpeta particionada
+        legacy_meta = target / "metadata.json"
+        if legacy_meta.exists():
+            legacy_meta.unlink()
+
         parquet_files = sorted(target.rglob("*.parquet"))
         if not parquet_files:
             raise FileNotFoundError(f"No se encontraron archivos parquet en {target}")
@@ -398,7 +410,7 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             "files": files_info,
         }
         if output_json is None:
-            output_json = target / "metadata.json"
+            output_json = target.parent / f"{target.name}_metadata.json"
 
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
@@ -409,8 +421,8 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
 
 def generate_manifest(manifest_path: Path = MANIFEST_FILE) -> dict:
     """Genera o actualiza el archivo manifest.json consolidando metadatos de estaciones y viajes."""
-    estaciones_meta = generate_parquet_metadata(ESTACIONES_FILE)
-    viajes_meta = generate_parquet_metadata(VIAJES_DIR)
+    estaciones_meta = generate_parquet_metadata(ESTACIONES_FILE, ESTACIONES_METADATA_FILE)
+    viajes_meta = generate_parquet_metadata(VIAJES_DIR, VIAJES_METADATA_FILE)
 
     manifest = {
         "version": "1.0",
@@ -456,7 +468,7 @@ def main() -> None:
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     df_stations.to_parquet(ESTACIONES_FILE, engine="pyarrow", index=False)
     logger.success(f"Archivo de estaciones guardado en: {ESTACIONES_FILE}")
-    generate_parquet_metadata(ESTACIONES_FILE)
+    generate_parquet_metadata(ESTACIONES_FILE, ESTACIONES_METADATA_FILE)
 
     logger.info("Comienza carga de datos de viajes")
     # TODO: Carga de archivos de forma cronologica, sort por fecha usando nombre de archivo
@@ -490,7 +502,7 @@ def main() -> None:
         )
 
     logger.info("Generando metadatos y manifest de datos")
-    generate_parquet_metadata(VIAJES_DIR)
+    generate_parquet_metadata(VIAJES_DIR, VIAJES_METADATA_FILE)
     generate_manifest(MANIFEST_FILE)
 
     logger.success("Completado proceso de dataset")

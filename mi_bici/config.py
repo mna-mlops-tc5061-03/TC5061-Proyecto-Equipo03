@@ -26,6 +26,8 @@ FIGURES_DIR = REPORTS_DIR / "figures"
 VIAJES_DIR = PROCESSED_DATA_DIR / "viajes"
 ESTACIONES_FILE = PROCESSED_DATA_DIR / "estaciones.parquet"
 MANIFEST_FILE = DATA_DIR / "manifest.json"
+ESTACIONES_METADATA_FILE = PROCESSED_DATA_DIR / "estaciones_metadata.json"
+VIAJES_METADATA_FILE = PROCESSED_DATA_DIR / "viajes_metadata.json"
 
 # Diccionario de columnas para limpieza
 COLUMN_PATTERNS_REGEX = {

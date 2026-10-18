@@ -33,7 +33,11 @@ class TestCleaning:
                 "Viaje_Id": [101, 101, 102],  # Duplicado en 101
                 "Usuario_Id": [1, 1, 2],
                 "Genero": ["M", "M", "F"],
-                "Año_de_nacimiento": [1990, 1990, np.nan],  # Nulo en nacimiento que debe preservarse
+                "Año_de_nacimiento": [
+                    1990,
+                    1990,
+                    np.nan,
+                ],  # Nulo en nacimiento que debe preservarse
                 "Inicio_del_viaje": [
                     "2025-10-01 08:00:00",
                     "2025-10-01 08:00:00",
@@ -90,3 +94,24 @@ class TestCleaning:
         assert len(cleaned) == 1
         assert cleaned["origen_id"].iloc[0] == 10
         assert cleaned["destino_id"].iloc[0] == 20
+
+    def test_clean_data_travels_removes_long_trips(self):
+        """Verifica eliminación de viajes de más de 12 horas, aunque cambien de estación."""
+        df_raw = pd.DataFrame(
+            {
+                "Viaje_Id": [1, 2],
+                "Usuario_Id": [1, 2],
+                "Genero": ["M", "F"],
+                "Año_de_nacimiento": [1985, 1992],
+                "Inicio_del_viaje": ["2025-10-01 08:00:00", "2025-10-01 08:00:00"],
+                "Fin_del_viaje": [
+                    "2025-10-01 21:00:00",  # 13 h -> irregular
+                    "2025-10-01 08:30:00",  # 30 min -> válido
+                ],
+                "Origen_Id": [10, 10],
+                "Destino_Id": [20, 20],
+            }
+        )
+        cleaned = clean_data_travels(df_raw)
+        assert len(cleaned) == 1
+        assert cleaned["duracion_min"].iloc[0] == 30

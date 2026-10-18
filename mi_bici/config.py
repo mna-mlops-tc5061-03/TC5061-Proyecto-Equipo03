@@ -64,7 +64,8 @@ URLS_VIAJES = {
     "2026-08": f"{URL_BASE}/130362/datos_abiertos_2026_08.csv",
     "2026-09": f"{URL_BASE}/131825/datos_abiertos_2026_09.csv",
 }
-URL_NOMENCLATURA = f"{URL_BASE}/1118/nomenclatura_2026_09.csv"
+URL_STATIONS = f"{URL_BASE}/1118/nomenclatura_2026_09.csv"
+URL_NOMENCLATURA = URL_STATIONS
 
 # Periodo: los 12 meses completos más recientes. Prueba en los dos últimos para no usar
 # información del futuro al entrenar

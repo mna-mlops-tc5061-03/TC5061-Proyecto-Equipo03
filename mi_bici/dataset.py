@@ -1,8 +1,12 @@
+from datetime import UTC, datetime
+import hashlib
+import json
 from pathlib import Path
 import re
 
 from loguru import logger
 import pandas as pd
+import pyarrow.parquet as pq
 import requests
 from tqdm import tqdm
 import typer
@@ -10,10 +14,11 @@ import typer
 from mi_bici.config import (
     COLUMN_PATTERNS_REGEX,
     ESTACIONES_FILE,
+    MANIFEST_FILE,
     PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
     UMBRAL_FILAS_A_REMOVER,
-    URL_NOMENCLATURA,
+    URL_STATIONS,
     URLS_VIAJES,
     VIAJES_DIR,
 )
@@ -21,25 +26,25 @@ from mi_bici.config import (
 app = typer.Typer()
 
 
-def download_data_noms(force: bool = False) -> Path:
-    """Descarga de datos de nomenclatura en CSV a raw."""
+def download_data_stations(force: bool = False) -> Path:
+    """Descarga de datos de estaciones (nomenclatura en origen) en CSV a raw."""
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
     headers = {"User-Agent": "curl/7.81.0", "Accept": "*/*"}
 
-    nom_filename = Path(URL_NOMENCLATURA).name
-    nom_dest = RAW_DATA_DIR / nom_filename
-    if nom_dest.exists() and nom_dest.stat().st_size > 0 and not force:
-        logger.info(f"Nomenclatura ya existe en {nom_dest.name}, omitiendo descarga.")
-        return nom_dest
+    station_filename = Path(URL_STATIONS).name
+    station_dest = RAW_DATA_DIR / station_filename
+    if station_dest.exists() and station_dest.stat().st_size > 0 and not force:
+        logger.info(f"Archivo de estaciones ya existe en {station_dest.name}, omitiendo descarga.")
+        return station_dest
 
-    logger.info(f"Descargando nomenclatura desde {URL_NOMENCLATURA}...")
-    response = requests.get(URL_NOMENCLATURA, headers=headers, stream=True, timeout=30)
+    logger.info(f"Descargando estaciones desde {URL_STATIONS}...")
+    response = requests.get(URL_STATIONS, headers=headers, stream=True, timeout=30)
     response.raise_for_status()
     total_size = int(response.headers.get("content-length", 0))
     with (
-        open(nom_dest, "wb") as f,
+        open(station_dest, "wb") as f,
         tqdm(
-            desc=nom_filename,
+            desc=station_filename,
             total=total_size,
             unit="B",
             unit_scale=True,
@@ -51,8 +56,8 @@ def download_data_noms(force: bool = False) -> Path:
             if chunk:
                 f.write(chunk)
                 bar.update(len(chunk))
-    logger.success(f"Nomenclatura guardada en {nom_dest.name}")
-    return nom_dest
+    logger.success(f"Archivo de estaciones guardado en {station_dest.name}")
+    return station_dest
 
 
 def download_data_travel(
@@ -112,7 +117,7 @@ def download_data_travel(
 
 def download_data(period: str | None = None, force: bool = False) -> None:
     """Descarga de datos CSV del sitio. Si se especifica period, descarga solo ese periodo."""
-    download_data_noms(force=force)
+    download_data_stations(force=force)
 
     if period is not None:
         download_data_travel(period=period, force=force)
@@ -155,19 +160,19 @@ def load_data_travels(
         return pd.read_csv(file_path, encoding="utf-8")
 
 
-def load_data_noms(download_if_missing: bool = False) -> pd.DataFrame:
-    """Carga de CSV de lugares/nomenclatura para su procesamiento."""
-    file_path = RAW_DATA_DIR / Path(URL_NOMENCLATURA).name
+def load_data_stations(download_if_missing: bool = False) -> pd.DataFrame:
+    """Carga de CSV de estaciones (nomenclatura en origen) para su procesamiento."""
+    file_path = RAW_DATA_DIR / Path(URL_STATIONS).name
     if not file_path.exists():
         matches = sorted(RAW_DATA_DIR.glob("nomenclatura*.csv"))
         if matches:
             file_path = matches[-1]
         elif download_if_missing:
-            file_path = download_data_noms()
+            file_path = download_data_stations()
         else:
-            raise FileNotFoundError(f"Archivo de nomenclatura no encontrado en: {RAW_DATA_DIR}")
+            raise FileNotFoundError(f"Archivo de estaciones no encontrado en: {RAW_DATA_DIR}")
 
-    logger.info(f"Cargando nomenclatura desde: {file_path.name}")
+    logger.info(f"Cargando estaciones desde: {file_path.name}")
     try:
         return pd.read_csv(file_path, encoding="utf-8")
     except UnicodeDecodeError:
@@ -227,8 +232,8 @@ def load_processed_travels(columns: list[str] | None = None) -> pd.DataFrame:
     return pd.read_parquet(VIAJES_DIR, columns=columns)
 
 
-def load_processed_noms() -> pd.DataFrame:
-    """Carga el dataset de nomenclatura/estaciones procesado en formato parquet."""
+def load_processed_stations() -> pd.DataFrame:
+    """Carga el dataset de estaciones procesado en formato parquet."""
     if not ESTACIONES_FILE.exists():
         raise FileNotFoundError(
             f"No se encontró el archivo de estaciones procesado: {ESTACIONES_FILE}"
@@ -236,9 +241,9 @@ def load_processed_noms() -> pd.DataFrame:
     return pd.read_parquet(ESTACIONES_FILE)
 
 
-def clean_data_noms(df: pd.DataFrame) -> pd.DataFrame:
-    """Proceso de limpieza de datos de CSV nominales."""
-    # TODO: Implementar reglas de limpieza específicas para nomenclatura si se requieren
+def clean_data_stations(df: pd.DataFrame) -> pd.DataFrame:
+    """Proceso de limpieza de datos de CSV de estaciones."""
+    # TODO: Implementar reglas de limpieza específicas para estaciones si se requieren
     return df
 
 
@@ -313,22 +318,145 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def compute_file_md5(file_path: Path) -> str:
+    """Calcula el hash MD5 de un archivo leyendo en bloques binarios."""
+    hasher = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> dict:
+    """Calcula el hash MD5 y metadatos de un archivo o carpeta parquet y crea un JSON en la misma carpeta."""
+    if not target.exists():
+        raise FileNotFoundError(f"Ruta objetivo no encontrada: {target}")
+
+    now_iso = datetime.now(UTC).isoformat()
+
+    if target.is_file():
+        md5_hash = compute_file_md5(target)
+        size_bytes = target.stat().st_size
+        pf = pq.ParquetFile(target)
+        num_rows = pf.metadata.num_rows
+        columns = pf.schema.names
+
+        metadata = {
+            "name": target.stem,
+            "file_name": target.name,
+            "md5": md5_hash,
+            "size_bytes": size_bytes,
+            "num_rows": num_rows,
+            "columns": columns,
+            "created_at": now_iso,
+        }
+        if output_json is None:
+            output_json = target.parent / f"{target.stem}_metadata.json"
+
+    else:
+        parquet_files = sorted(target.rglob("*.parquet"))
+        if not parquet_files:
+            raise FileNotFoundError(f"No se encontraron archivos parquet en {target}")
+
+        files_info = []
+        total_size = 0
+        total_rows = 0
+        columns = []
+        combined_hasher = hashlib.md5()
+
+        for pfile in parquet_files:
+            rel_path = str(pfile.relative_to(target))
+            f_md5 = compute_file_md5(pfile)
+            f_size = pfile.stat().st_size
+            pf = pq.ParquetFile(pfile)
+            f_rows = pf.metadata.num_rows
+            if not columns:
+                columns = pf.schema.names
+
+            total_size += f_size
+            total_rows += f_rows
+            combined_hasher.update(f_md5.encode("utf-8"))
+
+            files_info.append(
+                {
+                    "path": rel_path,
+                    "md5": f_md5,
+                    "size_bytes": f_size,
+                    "num_rows": f_rows,
+                }
+            )
+
+        metadata = {
+            "name": target.name,
+            "directory": target.name,
+            "md5": combined_hasher.hexdigest(),
+            "total_files": len(parquet_files),
+            "total_size_bytes": total_size,
+            "total_rows": total_rows,
+            "columns": columns,
+            "created_at": now_iso,
+            "files": files_info,
+        }
+        if output_json is None:
+            output_json = target / "metadata.json"
+
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+    logger.success(f"Metadatos guardados en: {output_json}")
+    return metadata
+
+
+def generate_manifest(manifest_path: Path = MANIFEST_FILE) -> dict:
+    """Genera o actualiza el archivo manifest.json consolidando metadatos de estaciones y viajes."""
+    estaciones_meta = generate_parquet_metadata(ESTACIONES_FILE)
+    viajes_meta = generate_parquet_metadata(VIAJES_DIR)
+
+    manifest = {
+        "version": "1.0",
+        "created_at": datetime.now(UTC).isoformat(),
+        "estaciones": {
+            "file": estaciones_meta["file_name"],
+            "md5": estaciones_meta["md5"],
+            "size_bytes": estaciones_meta["size_bytes"],
+            "num_rows": estaciones_meta["num_rows"],
+            "columns": estaciones_meta["columns"],
+        },
+        "viajes": {
+            "directory": viajes_meta["directory"],
+            "md5": viajes_meta["md5"],
+            "total_files": viajes_meta["total_files"],
+            "total_size_bytes": viajes_meta["total_size_bytes"],
+            "total_rows": viajes_meta["total_rows"],
+            "columns": viajes_meta["columns"],
+        },
+    }
+
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
+    logger.success(f"Manifiesto global generado exitosamente en: {manifest_path}")
+    return manifest
+
+
 @app.command()
 def main() -> None:
     logger.info("Descargar datos de viajes de sitio Mi Bici")
-    logger.info("Descargar datos de nomenclatura de sitio Mi Bici")
+    logger.info("Descargar datos de estaciones de sitio Mi Bici")
     download_data()
 
-    logger.info("Cargar datos nomenclatura")
-    df_noms = load_data_noms()
+    logger.info("Cargar datos de estaciones")
+    df_stations = load_data_stations()
 
-    logger.info("Limpieza datos nomenclatura")
-    df_noms = clean_data_noms(df_noms)
+    logger.info("Limpieza datos estaciones")
+    df_stations = clean_data_stations(df_stations)
 
-    logger.info("Guardado de archivo parquet nomenclatura")
+    logger.info("Guardado de archivo parquet estaciones")
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    df_noms.to_parquet(ESTACIONES_FILE, engine="pyarrow", index=False)
-    logger.success(f"Archivo de nomenclatura guardado en: {ESTACIONES_FILE}")
+    df_stations.to_parquet(ESTACIONES_FILE, engine="pyarrow", index=False)
+    logger.success(f"Archivo de estaciones guardado en: {ESTACIONES_FILE}")
+    generate_parquet_metadata(ESTACIONES_FILE)
 
     logger.info("Comienza carga de datos de viajes")
     # TODO: Carga de archivos de forma cronologica, sort por fecha usando nombre de archivo
@@ -360,6 +488,10 @@ def main() -> None:
             partition_cols=["anio", "mes"],
             index=False,
         )
+
+    logger.info("Generando metadatos y manifest de datos")
+    generate_parquet_metadata(VIAJES_DIR)
+    generate_manifest(MANIFEST_FILE)
 
     logger.success("Completado proceso de dataset")
 

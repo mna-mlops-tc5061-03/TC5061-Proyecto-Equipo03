@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "created_at": "2026-10-18T03:26:13.767557+00:00",
+  "created_at": "2026-10-18T03:46:04.491833+00:00",
   "estaciones": {
     "file": "estaciones.parquet",
     "md5": "9b8160f76c6d2279c5632cf8338df8de",
@@ -16,10 +16,10 @@
   },
   "viajes": {
     "directory": "viajes",
-    "md5": "092d843816d1e0e33939b292f82e0a47",
-    "total_files": 326,
-    "total_size_bytes": 133992541,
-    "total_rows": 18458434,
+    "md5": "f6e2248ea0d8fc1da870f5bdee50ff0c",
+    "total_files": 340,
+    "total_size_bytes": 170078609,
+    "total_rows": 23510478,
     "columns": [
       "genero",
       "nacimiento",

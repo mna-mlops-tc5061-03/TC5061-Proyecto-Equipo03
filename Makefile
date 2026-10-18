@@ -40,7 +40,10 @@ format:
 	ruff format
 
 
-
+## Run unit tests
+.PHONY: test
+test:
+	pytest tests/
 
 
 ## Set up Python interpreter environment

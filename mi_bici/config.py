@@ -26,6 +26,44 @@ FIGURES_DIR = REPORTS_DIR / "figures"
 VIAJES_DIR = PROCESSED_DATA_DIR / "viajes"
 ESTACIONES_FILE = PROCESSED_DATA_DIR / "estaciones.parquet"
 MANIFEST_FILE = DATA_DIR / "manifest.json"
+ESTACIONES_METADATA_FILE = PROCESSED_DATA_DIR / "estaciones_metadata.json"
+VIAJES_METADATA_FILE = PROCESSED_DATA_DIR / "viajes_metadata.json"
+
+# Diccionario de columnas para limpieza de viajes
+COLUMN_PATTERNS_REGEX = {
+    "viaje_id": r"^viaje",
+    "usuario_id": r"^usuario",
+    "genero": r"^genero",
+    "inicio": r"^inicio",
+    "fin": r"^fin",
+    "origen_id": r"^origen",
+    "destino_id": r"^destino",
+    "nacimiento": r"naci",
+}
+TRAVEL_COLUMNS_TO_KEEP = [
+    "genero",
+    "inicio",
+    "fin",
+    "origen_id",
+    "destino_id",
+    "nacimiento",
+]
+
+# Diccionario de columnas para limpieza de estaciones
+STATION_PATTERNS_REGEX = {
+    "estacion_id": r"^(id|estacion)",
+    "nombre": r"^(name|nombre)",
+    "latitud": r"^(lat|latitude|latitud)",
+    "longitud": r"^(lon|long|longitude|longitud)",
+    "capacidad": r"^(dpcapacity|capacidad|capacity)",
+}
+STATION_COLUMNS_TO_KEEP = [
+    "estacion_id",
+    "nombre",
+    "latitud",
+    "longitud",
+    "capacidad",
+]
 
 # Portal de datos abiertos de MiBici. Cada archivo tiene un ID propio en la URL, por eso se
 # fijan aquí en lugar de leer la página, que puede cambiar
@@ -44,7 +82,8 @@ URLS_VIAJES = {
     "2026-08": f"{URL_BASE}/130362/datos_abiertos_2026_08.csv",
     "2026-09": f"{URL_BASE}/131825/datos_abiertos_2026_09.csv",
 }
-URL_NOMENCLATURA = f"{URL_BASE}/1118/nomenclatura_2026_09.csv"
+URL_STATIONS = f"{URL_BASE}/1118/nomenclatura_2026_09.csv"
+URL_NOMENCLATURA = URL_STATIONS
 
 # Periodo: los 12 meses completos más recientes. Prueba en los dos últimos para no usar
 # información del futuro al entrenar
@@ -55,7 +94,16 @@ CORTE_PRUEBA = "2026-08-01"
 # Limpieza: viajes de menos de 2 min que salen y regresan a la misma estación son errores al
 # sacar la bici. Más de 12 h se considera irregular en los términos de MiBici
 DURACION_MINIMA_MIN = 2
-DURACION_MAXIMA_HORAS = 12
+DURACION_MAXIMA_MIN = 12 * 60
+
+# Limpieza: Valor para rellenar los nulos en genero: NE=No especificado
+GENERO_NULL_VALUE = "NE"
+
+# Limpieza: Valor mínimo teorico a aceptar en anio de nacimiento
+ANIO_NACIMIENTO_MINIMO = 1920
+
+# Maximo umbral de filas a remover, en caso de ser mayor se deja un log error para su atencion
+UMBRAL_FILAS_A_REMOVER = 0.05
 
 # Días de descanso obligatorio (art. 74 de la Ley Federal del Trabajo) dentro del periodo
 FESTIVOS = [

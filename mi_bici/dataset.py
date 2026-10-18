@@ -12,6 +12,7 @@ from mi_bici.config import (
     ESTACIONES_FILE,
     PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
+    UMBRAL_FILAS_A_REMOVER,
     URL_NOMENCLATURA,
     URLS_VIAJES,
     VIAJES_DIR,
@@ -20,73 +21,132 @@ from mi_bici.config import (
 app = typer.Typer()
 
 
-def download_data() -> None:
-    """Descarga de datos CSV directa del sitio usando nombres mapeados."""
+def download_data_noms(force: bool = False) -> Path:
+    """Descarga de datos de nomenclatura en CSV a raw."""
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
     headers = {"User-Agent": "curl/7.81.0", "Accept": "*/*"}
 
-    # Descarga nomenclatura
     nom_filename = Path(URL_NOMENCLATURA).name
     nom_dest = RAW_DATA_DIR / nom_filename
-    if nom_dest.exists() and nom_dest.stat().st_size > 0:
+    if nom_dest.exists() and nom_dest.stat().st_size > 0 and not force:
         logger.info(f"Nomenclatura ya existe en {nom_dest.name}, omitiendo descarga.")
+        return nom_dest
+
+    logger.info(f"Descargando nomenclatura desde {URL_NOMENCLATURA}...")
+    response = requests.get(URL_NOMENCLATURA, headers=headers, stream=True, timeout=30)
+    response.raise_for_status()
+    total_size = int(response.headers.get("content-length", 0))
+    with (
+        open(nom_dest, "wb") as f,
+        tqdm(
+            desc=nom_filename,
+            total=total_size,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            leave=False,
+        ) as bar,
+    ):
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                f.write(chunk)
+                bar.update(len(chunk))
+    logger.success(f"Nomenclatura guardada en {nom_dest.name}")
+    return nom_dest
+
+
+def download_data_travel(
+    period: str | None = None,
+    month: int | None = None,
+    year: int | None = None,
+    force: bool = False,
+) -> Path:
+    """Descarga un CSV específico de viajes de acuerdo a su periodo ('YYYY-MM') o mes y año."""
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    headers = {"User-Agent": "curl/7.81.0", "Accept": "*/*"}
+
+    if period is None:
+        if month is None or year is None:
+            raise ValueError(
+                "Se debe proporcionar 'period' (ej. '2025-10') o ambos 'month' y 'year'."
+            )
+        period = f"{year}-{month:02d}"
     else:
-        logger.info(f"Descargando nomenclatura desde {URL_NOMENCLATURA}...")
-        response = requests.get(URL_NOMENCLATURA, headers=headers, stream=True, timeout=30)
-        response.raise_for_status()
-        total_size = int(response.headers.get("content-length", 0))
-        with (
-            open(nom_dest, "wb") as f,
-            tqdm(
-                desc=nom_filename,
-                total=total_size,
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-                leave=False,
-            ) as bar,
-        ):
-            for chunk in response.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
-                    bar.update(len(chunk))
-        logger.success(f"Nomenclatura guardada en {nom_dest.name}")
+        period = period.replace("_", "-")
 
-    # Descarga de viajes
-    for periodo, url in URLS_VIAJES.items():
-        viaje_filename = Path(url).name
-        viaje_dest = RAW_DATA_DIR / viaje_filename
-        if viaje_dest.exists() and viaje_dest.stat().st_size > 0:
-            logger.info(f"Archivo {viaje_filename} ({periodo}) ya existe, omitiendo descarga.")
-            continue
+    if period not in URLS_VIAJES:
+        raise KeyError(
+            f"Periodo '{period}' no encontrado en URLS_VIAJES. Periodos disponibles: {list(URLS_VIAJES.keys())}"
+        )
 
-        logger.info(f"Descargando viajes {periodo} desde {url}...")
-        response = requests.get(url, headers=headers, stream=True, timeout=60)
-        response.raise_for_status()
-        total_size = int(response.headers.get("content-length", 0))
-        with (
-            open(viaje_dest, "wb") as f,
-            tqdm(
-                desc=viaje_filename,
-                total=total_size,
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-                leave=False,
-            ) as bar,
-        ):
-            for chunk in response.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
-                    bar.update(len(chunk))
-        logger.success(f"Archivo {viaje_filename} guardado exitosamente.")
+    url = URLS_VIAJES[period]
+    viaje_filename = Path(url).name
+    viaje_dest = RAW_DATA_DIR / viaje_filename
+
+    if viaje_dest.exists() and viaje_dest.stat().st_size > 0 and not force:
+        logger.info(f"Archivo {viaje_filename} ({period}) ya existe, omitiendo descarga.")
+        return viaje_dest
+
+    logger.info(f"Descargando viajes {period} desde {url}...")
+    response = requests.get(url, headers=headers, stream=True, timeout=60)
+    response.raise_for_status()
+    total_size = int(response.headers.get("content-length", 0))
+    with (
+        open(viaje_dest, "wb") as f,
+        tqdm(
+            desc=viaje_filename,
+            total=total_size,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            leave=False,
+        ) as bar,
+    ):
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                f.write(chunk)
+                bar.update(len(chunk))
+    logger.success(f"Archivo {viaje_filename} guardado exitosamente.")
+    return viaje_dest
 
 
-def load_data_travels(month: int, year: int) -> pd.DataFrame:
-    """Carga de CSV de un año y mes para su procesamiento."""
+def download_data(period: str | None = None, force: bool = False) -> None:
+    """Descarga de datos CSV del sitio. Si se especifica period, descarga solo ese periodo."""
+    download_data_noms(force=force)
+
+    if period is not None:
+        download_data_travel(period=period, force=force)
+    else:
+        for p in URLS_VIAJES:
+            download_data_travel(period=p, force=force)
+
+
+def load_data_travels(
+    month: int | None = None,
+    year: int | None = None,
+    period: str | None = None,
+    download_if_missing: bool = False,
+) -> pd.DataFrame:
+    """Carga de un CSV específico de viajes (por periodo 'YYYY-MM' o mes y año)."""
+    if period is not None:
+        period_norm = period.replace("-", "_")
+        parts = period_norm.split("_")
+        if len(parts) == 2:
+            year, month = int(parts[0]), int(parts[1])
+        else:
+            raise ValueError(
+                f"Formato de periodo no reconocido: '{period}'. Use 'YYYY-MM' o 'YYYY_MM'."
+            )
+    elif month is None or year is None:
+        raise ValueError("Se debe proporcionar 'period' (ej. '2025-10') o ambos 'month' y 'year'.")
+
     file_path = RAW_DATA_DIR / f"datos_abiertos_{year}_{month:02d}.csv"
     if not file_path.exists():
-        raise FileNotFoundError(f"Archivo de viajes no encontrado: {file_path}")
+        if download_if_missing:
+            logger.info(f"Archivo {file_path.name} no encontrado localmente. Descargando...")
+            download_data_travel(year=year, month=month)
+        else:
+            raise FileNotFoundError(f"Archivo de viajes no encontrado: {file_path}")
 
     logger.info(f"Cargando archivo: {file_path.name}")
     try:
@@ -95,13 +155,15 @@ def load_data_travels(month: int, year: int) -> pd.DataFrame:
         return pd.read_csv(file_path, encoding="utf-8")
 
 
-def load_data_noms() -> pd.DataFrame:
+def load_data_noms(download_if_missing: bool = False) -> pd.DataFrame:
     """Carga de CSV de lugares/nomenclatura para su procesamiento."""
     file_path = RAW_DATA_DIR / Path(URL_NOMENCLATURA).name
     if not file_path.exists():
         matches = sorted(RAW_DATA_DIR.glob("nomenclatura*.csv"))
         if matches:
             file_path = matches[-1]
+        elif download_if_missing:
+            file_path = download_data_noms()
         else:
             raise FileNotFoundError(f"Archivo de nomenclatura no encontrado en: {RAW_DATA_DIR}")
 
@@ -110,6 +172,68 @@ def load_data_noms() -> pd.DataFrame:
         return pd.read_csv(file_path, encoding="utf-8")
     except UnicodeDecodeError:
         return pd.read_csv(file_path, encoding="iso-8859-1")
+
+
+def load_data_from_url(
+    url: str,
+    dest_dir: Path = RAW_DATA_DIR,
+    force: bool = False,
+) -> pd.DataFrame:
+    """Descarga (si no existe) y carga un dataset CSV desde una URL directa para exploración en notebooks.
+
+    Aplica la misma estrategia de verificación de existencia local, descarga con headers compatibles
+    y decodificación con fallback de encodings (iso-8859-1 / utf-8).
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    filename = Path(url).name
+    dest_file = dest_dir / filename
+
+    if dest_file.exists() and dest_file.stat().st_size > 0 and not force:
+        logger.info(f"El archivo {filename} ya existe localmente. Omitiendo descarga.")
+    else:
+        headers = {"User-Agent": "curl/7.81.0", "Accept": "*/*"}
+        logger.info(f"Descargando dataset desde {url}...")
+        response = requests.get(url, headers=headers, stream=True, timeout=60)
+        response.raise_for_status()
+        total_size = int(response.headers.get("content-length", 0))
+        with (
+            open(dest_file, "wb") as f,
+            tqdm(
+                desc=filename,
+                total=total_size,
+                unit="B",
+                unit_scale=True,
+                unit_divisor=1024,
+                leave=False,
+            ) as bar,
+        ):
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+                    bar.update(len(chunk))
+        logger.success(f"Archivo guardado en: {dest_file}")
+
+    logger.info(f"Cargando dataset desde {dest_file.name}...")
+    try:
+        return pd.read_csv(dest_file, encoding="iso-8859-1")
+    except UnicodeDecodeError:
+        return pd.read_csv(dest_file, encoding="utf-8")
+
+
+def load_processed_travels(columns: list[str] | None = None) -> pd.DataFrame:
+    """Carga el dataset completo de viajes procesados en formato parquet."""
+    if not VIAJES_DIR.exists():
+        raise FileNotFoundError(f"No se encontró el directorio de viajes procesados: {VIAJES_DIR}")
+    return pd.read_parquet(VIAJES_DIR, columns=columns)
+
+
+def load_processed_noms() -> pd.DataFrame:
+    """Carga el dataset de nomenclatura/estaciones procesado en formato parquet."""
+    if not ESTACIONES_FILE.exists():
+        raise FileNotFoundError(
+            f"No se encontró el archivo de estaciones procesado: {ESTACIONES_FILE}"
+        )
+    return pd.read_parquet(ESTACIONES_FILE)
 
 
 def clean_data_noms(df: pd.DataFrame) -> pd.DataFrame:
@@ -153,8 +277,8 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     df["destino"] = df["destino"].astype(int)
 
     # Paso 5: Normalizar columnas de fecha y hora. Nueva columna de minutos
-    df["inicio"] = pd.to_datetime(df["inicio"], format="mixed", errors="coerce")
-    df["fin"] = pd.to_datetime(df["fin"], format="mixed", errors="coerce")
+    df["inicio"] = pd.to_datetime(df["inicio"], format="mixed", dayfirst=True, errors="coerce")
+    df["fin"] = pd.to_datetime(df["fin"], format="mixed", dayfirst=True, errors="coerce")
 
     # Filtrar registros donde no se pudo parsear fecha
     df = df[df["inicio"].notna() & df["fin"].notna()]
@@ -174,7 +298,10 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(df[df["duracion_min"] < 0].index)
 
     filas_eliminadas = total_filas_inicial - len(df)
-    if total_filas_inicial > 0 and (filas_eliminadas / total_filas_inicial) > 0.05:
+    if (
+        total_filas_inicial > 0
+        and (filas_eliminadas / total_filas_inicial) > UMBRAL_FILAS_A_REMOVER
+    ):
         logger.error(
             f"Se eliminaron {filas_eliminadas} filas ({filas_eliminadas / total_filas_inicial:.2%}) "
             f"de un total de {total_filas_inicial}, superando el umbral del 5%."

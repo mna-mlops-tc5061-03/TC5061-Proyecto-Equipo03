@@ -38,6 +38,14 @@ COLUMN_PATTERNS_REGEX = {
     "destino": r"^destino",
     "nacimiento": r"naci",
 }
+TRAVEL_COLUMNS_TO_KEEP = [
+    "genero",
+    "inicio",
+    "fin",
+    "origen",
+    "destino",
+    "nacimiento",
+]
 
 # Portal de datos abiertos de MiBici. Cada archivo tiene un ID propio en la URL, por eso se
 # fijan aquí en lugar de leer la página, que puede cambiar
@@ -68,6 +76,9 @@ CORTE_PRUEBA = "2026-08-01"
 # sacar la bici. Más de 12 h se considera irregular en los términos de MiBici
 DURACION_MINIMA_MIN = 2
 DURACION_MAXIMA_HORAS = 12
+
+# Maximo umbral de filas a remover, en caso de ser mayor se deja un log error para su atencion
+UMBRAL_FILAS_A_REMOVER = 0.05
 
 # Días de descanso obligatorio (art. 74 de la Ley Federal del Trabajo) dentro del periodo
 FESTIVOS = [

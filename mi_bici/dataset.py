@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 import hashlib
 import json
 from pathlib import Path
@@ -15,12 +14,18 @@ from tqdm import tqdm
 import typer
 
 from mi_bici.config import (
+    ANIO_NACIMIENTO_MINIMO,
     COLUMN_PATTERNS_REGEX,
+    DURACION_MAXIMA_MIN,
     ESTACIONES_FILE,
     ESTACIONES_METADATA_FILE,
+    GENERO_NULL_VALUE,
     MANIFEST_FILE,
     PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
+    STATION_COLUMNS_TO_KEEP,
+    STATION_PATTERNS_REGEX,
+    TRAVEL_COLUMNS_TO_KEEP,
     UMBRAL_FILAS_A_REMOVER,
     URL_STATIONS,
     URLS_VIAJES,
@@ -160,9 +165,9 @@ def load_data_travels(
 
     logger.info(f"Cargando archivo: {file_path.name}")
     try:
-        return pd.read_csv(file_path, encoding="iso-8859-1")
-    except UnicodeDecodeError:
         return pd.read_csv(file_path, encoding="utf-8")
+    except UnicodeDecodeError:
+        return pd.read_csv(file_path, encoding="latin-1")
 
 
 def load_data_stations(download_if_missing: bool = False) -> pd.DataFrame:
@@ -251,8 +256,40 @@ def load_processed_stations() -> pd.DataFrame:
 
 
 def clean_data_stations(df: pd.DataFrame) -> pd.DataFrame:
-    """Proceso de limpieza de datos de CSV de estaciones."""
-    # TODO: Implementar reglas de limpieza específicas para estaciones si se requieren
+    """Proceso de limpieza y estandarización de columnas de CSV de estaciones."""
+    cols = df.columns
+
+    cols_detectadas = {
+        clave: next((c for c in cols if re.search(patron, c, re.IGNORECASE)), None)
+        for clave, patron in STATION_PATTERNS_REGEX.items()
+    }
+
+    mapa_renombrado = {
+        col_real: nombre_estandar
+        for nombre_estandar, col_real in cols_detectadas.items()
+        if col_real is not None
+    }
+
+    df = df.rename(columns=mapa_renombrado)
+
+    # Validar y parsear tipos de datos si las columnas están presentes
+    if "estacion_id" in df.columns:
+        df["estacion_id"] = pd.to_numeric(df["estacion_id"], errors="coerce").astype(int)
+    if "nombre" in df.columns:
+        df["nombre"] = df["nombre"].astype(str)
+    if "latitud" in df.columns:
+        df["latitud"] = pd.to_numeric(df["latitud"], errors="coerce").astype(float)
+    if "longitud" in df.columns:
+        df["longitud"] = pd.to_numeric(df["longitud"], errors="coerce").astype(float)
+    if "capacidad" in df.columns:
+        df["capacidad"] = pd.to_numeric(df["capacidad"], errors="coerce").astype(int)
+
+    # Filtrar orden de columnas deseadas
+    cols_finales = [c for c in STATION_COLUMNS_TO_KEEP if c in df.columns]
+    if cols_finales:
+        df = df[cols_finales]
+
+    df = df.reset_index(drop=True)
     return df
 
 
@@ -294,23 +331,38 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.rename(columns=mapa_renombrado)
 
-    # Paso 2: Eliminar columnas innecesarias para P1, P2, P3
-    df = df.drop(columns=["viaje", "usuario"], errors="ignore")
+    # Paso 2: Detectar viajes Id duplicados si existen antes de eliminar la columna
+    if "viaje_id" in df.columns:
+        duplicados = int(df["viaje_id"].duplicated().sum())
+        if duplicados > 0:
+            logger.warning(
+                f"Se detectaron {duplicados} registros con viaje_id duplicado. Eliminando duplicados..."
+            )
+            df = df.drop_duplicates(subset=["viaje_id"], keep="first")
 
-    # Paso 3: Eliminar filas con nulos en columnas esenciales
-    mask_notna = df["nacimiento"].notna()
-    if "origen" in df.columns:
-        mask_notna &= df["origen"].notna()
-    if "destino" in df.columns:
-        mask_notna &= df["destino"].notna()
+    # Paso 3: Eliminar columnas innecesarias para P1, P2, P3
+    df = df.drop(columns=["viaje_id", "usuario_id", "usuario", "viaje"], errors="ignore")
+
+    # Paso 4: Eliminar filas con nulos en estaciones de origen y destino (no en nacimiento)
+    mask_notna = pd.Series(True, index=df.index)
+    if "origen_id" in df.columns:
+        mask_notna &= df["origen_id"].notna()
+    if "destino_id" in df.columns:
+        mask_notna &= df["destino_id"].notna()
     df = df[mask_notna]
 
-    # Paso 4: Parsear como ints columnas en float
-    df["nacimiento"] = df["nacimiento"].astype(int)
-    df["origen"] = df["origen"].astype(int)
-    df["destino"] = df["destino"].astype(int)
+    # Paso 5: Parsear tipos numéricos (nacimiento nullable Int64 para preservar nulos)
+    if "nacimiento" in df.columns:
+        df["nacimiento"] = pd.to_numeric(df["nacimiento"], errors="coerce").astype("Int64")
+    if "origen_id" in df.columns:
+        df["origen_id"] = pd.to_numeric(df["origen_id"], errors="coerce").astype(int)
+    if "destino_id" in df.columns:
+        df["destino_id"] = pd.to_numeric(df["destino_id"], errors="coerce").astype(int)
 
-    # Paso 5: Normalizar columnas de fecha y hora. Nueva columna de minutos
+    # Paso 6: Eliminar valores debajo del minimo de nacimiento
+    df = df[df["nacimiento"] >= ANIO_NACIMIENTO_MINIMO]
+
+    # Paso 7: Normalizar columnas de fecha y hora. Nueva columna de minutos
     df["inicio"] = parse_datetime_series(df["inicio"])
     df["fin"] = parse_datetime_series(df["fin"])
 
@@ -322,12 +374,13 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     df["inicio"] = df["inicio"].dt.strftime("%Y-%m-%d %H:%M")
     df["fin"] = df["fin"].dt.strftime("%Y-%m-%d %H:%M")
 
-    # Paso 6: Genero rellenar los null con No Binario
-    df["genero"] = df["genero"].fillna("NB")
+    # Paso 8: Genero rellenar los null con valor de configuracion
+    if "genero" in df.columns:
+        df["genero"] = df["genero"].fillna(GENERO_NULL_VALUE)
 
-    # Paso 7: Eliminar rows basura que son posibles errores que no aportan nada
+    # Paso 9: Eliminar rows basura que son posibles errores que no aportan nada
     # Escenario: Si hay viajes que duran menos de 2 minutos y son origen y destino iguales, o duracion negativa, eliminarlos
-    filtro_valido = ~((df["duracion_min"] < 2) & (df["origen"] == df["destino"])) & (
+    filtro_valido = ~((df["duracion_min"] < 2) & (df["duracion_min"] > DURACION_MAXIMA_MIN) & (df["origen_id"] == df["destino_id"])) & (
         df["duracion_min"] >= 0
     )
     df = df[filtro_valido]
@@ -341,6 +394,11 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
             f"Se eliminaron {filas_eliminadas} filas ({filas_eliminadas / total_filas_inicial:.2%}) "
             f"de un total de {total_filas_inicial}, superando el umbral del 5%."
         )
+
+    # Paso 10: Ordenar columnas finales
+    cols_finales = [c for c in TRAVEL_COLUMNS_TO_KEEP + ["duracion_min"] if c in df.columns]
+    if cols_finales:
+        df = df[cols_finales]
 
     # Reset de index
     df = df.reset_index(drop=True)
@@ -362,8 +420,6 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
     if not target.exists():
         raise FileNotFoundError(f"Ruta objetivo no encontrada: {target}")
 
-    now_iso = datetime.now(UTC).isoformat()
-
     if target.is_file():
         md5_hash = compute_file_md5(target)
         size_bytes = target.stat().st_size
@@ -378,7 +434,6 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             "size_bytes": size_bytes,
             "num_rows": num_rows,
             "columns": columns,
-            "created_at": now_iso,
         }
         if output_json is None:
             output_json = target.parent / f"{target.stem}_metadata.json"
@@ -429,7 +484,6 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             "total_size_bytes": total_size,
             "total_rows": total_rows,
             "columns": columns,
-            "created_at": now_iso,
             "files": files_info,
         }
         if output_json is None:
@@ -449,7 +503,6 @@ def generate_manifest(manifest_path: Path = MANIFEST_FILE) -> dict:
 
     manifest = {
         "version": "1.0",
-        "created_at": datetime.now(UTC).isoformat(),
         "estaciones": {
             "file": estaciones_meta["file_name"],
             "md5": estaciones_meta["md5"],

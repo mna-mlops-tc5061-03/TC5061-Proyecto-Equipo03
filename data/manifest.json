@@ -1,32 +1,31 @@
 {
   "version": "1.0",
-  "created_at": "2026-10-18T03:51:31.570174+00:00",
   "estaciones": {
     "file": "estaciones.parquet",
-    "md5": "9b8160f76c6d2279c5632cf8338df8de",
-    "size_bytes": 26799,
+    "md5": "f4e659df2c6a11f0b57c301adb1b0283",
+    "size_bytes": 26863,
     "num_rows": 484,
     "columns": [
-      "id",
-      "name",
-      "latitude",
-      "longitude",
-      "dpcapacity"
+      "estacion_id",
+      "nombre",
+      "latitud",
+      "longitud",
+      "capacidad"
     ]
   },
   "viajes": {
     "directory": "viajes",
-    "md5": "9e4abf7b007d1a7c269461e006df6254",
+    "md5": "680907bd7f10ff61ab36c95b61f77a79",
     "total_files": 12,
-    "total_size_bytes": 31051074,
-    "total_rows": 4332984,
+    "total_size_bytes": 31864832,
+    "total_rows": 4496266,
     "columns": [
       "genero",
-      "nacimiento",
       "inicio",
       "fin",
-      "origen",
-      "destino",
+      "origen_id",
+      "destino_id",
+      "nacimiento",
       "duracion_min"
     ]
   }

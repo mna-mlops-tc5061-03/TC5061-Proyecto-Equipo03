@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 
 from loguru import logger
 import pandas as pd
@@ -492,30 +493,36 @@ def main() -> None:
     logger.success(f"Archivo de estaciones guardado en: {ESTACIONES_FILE}")
     generate_parquet_metadata(ESTACIONES_FILE, ESTACIONES_METADATA_FILE)
 
-    logger.info("Comienza carga de datos de viajes")
-    # TODO: Carga de archivos de forma cronologica, sort por fecha usando nombre de archivo
-    archivos_viajes = sorted(RAW_DATA_DIR.glob("datos_abiertos_*.csv"))
-
+    logger.info("Comienza carga de datos de viajes (exclusivamente periodos de URLS_VIAJES)")
+    # Limpiar VIAJES_DIR si ya existe para evitar particiones de datasets exploratorios antiguos (ej. 2020, 2023)
+    if VIAJES_DIR.exists():
+        shutil.rmtree(VIAJES_DIR)
     VIAJES_DIR.mkdir(parents=True, exist_ok=True)
 
-    for archivo in archivos_viajes:
-        match = re.search(r"datos_abiertos_(\d{4})_(\d{2})\.csv", archivo.name)
-        if not match:
-            continue
-        anio = int(match.group(1))
-        mes = int(match.group(2))
+    for period in sorted(URLS_VIAJES.keys()):
+        parts = period.split("-")
+        anio = int(parts[0])
+        mes = int(parts[1])
+        archivo_nombre = f"datos_abiertos_{anio}_{mes:02d}.csv"
+        archivo_path = RAW_DATA_DIR / archivo_nombre
 
-        logger.info(f"Cargando datos de viajes de archivo {archivo.name}")
-        df_viajes = load_data_travels(month=mes, year=anio)
+        if not archivo_path.exists():
+            logger.warning(
+                f"Archivo {archivo_nombre} de {period} no encontrado en raw. Descargando..."
+            )
+            download_data_travel(period=period)
 
-        logger.info(f"Limpieza datos viajes de archivo {archivo.name}")
+        logger.info(f"Cargando datos de viajes de periodo {period} ({archivo_nombre})")
+        df_viajes = load_data_travels(period=period)
+
+        logger.info(f"Limpieza datos viajes de periodo {period}")
         df_viajes = clean_data_travels(df_viajes)
 
         # Siguiendo como el notebook hizo los archivos parquet:
         df_viajes["anio"] = df_viajes["inicio"].str[:4]
         df_viajes["mes"] = df_viajes["inicio"].str[5:7]
 
-        logger.info(f"Guardado en parquet de particion de viajes {anio}-{mes:02d}")
+        logger.info(f"Guardado en parquet de particion de viajes {period}")
         df_viajes.to_parquet(
             VIAJES_DIR,
             engine="pyarrow",

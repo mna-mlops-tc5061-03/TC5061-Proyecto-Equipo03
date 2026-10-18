@@ -22,6 +22,16 @@ pip install -r requirements.txt
 `requirements.txt` fija la versión exacta de cada dependencia, así que el entorno es el mismo en
 cualquier computadora.
 
+## Ejecución
+
+```bash
+make data     # descarga, limpia y versiona los datos de MiBici
+make train    # registra en MLflow un baseline y un candidato de P1, P2 y P3 (6 runs)
+mlflow ui     # ver los runs en http://127.0.0.1:5000
+```
+
+Para correr solo una parte: `python -m mi_bici.modeling.train --pregunta P2 --modelo candidato`.
+
 ## Configuración
 
 Todo lo que define una ejecución vive en `mi_bici/config.py`: rutas, URLs de los datos, periodo y
@@ -52,11 +62,11 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── config.py            # rutas, URLs, periodo, semilla, umbrales y experimento de MLflow
 │   ├── dataset.py           # ingesta de los datos de MiBici (plantilla, pendiente)
 │   ├── features.py          # variables de P1, P2 y P3, sin información del futuro
-│   ├── plots.py             # gráficas (plantilla, pendiente)
+│   ├── plots.py             # gráficas que se registran como artefactos
 │   └── modeling/
 │       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow
 │       ├── evaluate.py      # métricas por tipo de tarea (test_*, train_*)
-│       └── train.py         # experimentos de P1, P2 y P3 (plantilla, pendiente)
+│       └── train.py         # experimentos de P1, P2 y P3 (baseline y candidato)
 ├── data/                    # raw, interim, processed y external. No se versiona
 ├── models/                  # modelos serializados. No se versionan
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb

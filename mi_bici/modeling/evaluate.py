@@ -42,7 +42,7 @@ def metricas_clasificacion(y, pred, puntaje) -> dict:
     """Calcula las métricas de clasificación de P2.
 
     Con pocos bloques en riesgo, el recall dice cuántos se detectan y la precisión cuántas visitas
-    del camión serían en vano. PR-AUC resume ambas sin fijar un umbral.
+    del camión serían en vano. La precisión promedio resume ambas sin fijar un umbral.
 
     Args:
         y: Etiquetas reales del conjunto de prueba.
@@ -50,13 +50,13 @@ def metricas_clasificacion(y, pred, puntaje) -> dict:
         puntaje: Probabilidad o puntaje de la clase positiva.
 
     Returns:
-        `test_recall`, `test_precision`, `test_f1` y `test_pr_auc`.
+        `test_recall`, `test_precision`, `test_f1` y `test_average_precision`.
     """
     return {
         "test_recall": recall_score(y, pred, zero_division=0),
         "test_precision": precision_score(y, pred, zero_division=0),
         "test_f1": f1_score(y, pred, zero_division=0),
-        "test_pr_auc": average_precision_score(y, puntaje),
+        "test_average_precision": average_precision_score(y, puntaje),
     }
 
 

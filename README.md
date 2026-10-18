@@ -9,6 +9,60 @@ Propuesta y base reproducible de ML para el sistema MiBici. Con los viajes que p
 operación: demanda por estación (regresión), riesgo de quedarse sin bicis o sin anclajes
 (clasificación) y grupos de estaciones con patrones de uso parecidos (clustering).
 
+## Preguntas
+
+| | Pregunta | Tarea | Métrica principal |
+|---|---|---|---|
+| **P1** | ¿Cuántos viajes saldrán de cada estación por día? | Regresión | MAE (en viajes) |
+| **P2** | ¿Qué estaciones están en riesgo de quedarse sin bicis o sin anclajes en la siguiente hora? | Clasificación | Recall |
+| **P3** | ¿Qué grupos de estaciones tienen patrones de uso parecidos? | Clustering | Silhouette |
+
+Las tres se formularon con el [Machine Learning Canvas](https://www.ownml.co/machine-learning-canvas), disponible en `references/`.
+
+## Datos
+
+Se usan los datos abiertos de [MiBici](https://mibici.net/es/datos-abiertos/), el sistema de bicicleta pública del Área Metropolitana de Guadalajara:
+
+- **Viajes** (`datos_abiertos_AAAA_MM.csv`): un archivo por mes, con identificador del viaje y del usuario, género, año de nacimiento, fecha y hora de inicio y fin, y estaciones de origen y destino.
+- **Estaciones** (`nomenclatura_AAAA_MM.csv`): catálogo con identificador, nombre y ubicación de cada estación.
+
+El periodo de análisis y el corte de prueba se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de cada archivo como versión de los datos.
+
+## Uso
+
+```bash
+# 1. Descargar, limpiar y versionar los datos
+python -m mi_bici.dataset
+
+# 2. Correr los experimentos de P1, P2 y P3
+python -m mi_bici.modeling.train
+
+# 3. Ver los resultados en MLflow
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+## Buenas prácticas aplicadas
+
+| Práctica | Cómo se aplica |
+|---|---|
+| Estructura estándar | Plantilla de Cookiecutter Data Science |
+| Datos inmutables y fuera de Git | `data/raw/` no se modifica ni se versiona; solo `data/manifest.json` |
+| Reproducibilidad | Dependencias con versión fija, semilla y configuración centralizada en `config.py`, versión de datos por hash |
+| Código en módulos | Los notebooks solo exploran; la lógica vive en `mi_bici/` |
+| Registro de experimentos | Todos los runs se registran en MLflow con los mismos parámetros, métricas y etiquetas |
+| Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
+| Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
+| Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
+
+## Integrantes
+
+| Integrante | Matrícula | Rol |
+|---|---|---|
+| Anaí Barrera | A01797380 | Exploración de datos y documentación |
+| Gerardo González Martínez | A01840096 | Configuración del proyecto y registro de experimentos |
+| Miguel Castillo | A01840045 | Ingesta y versión de los datos |
+| Sebastián Estrada | A00805402 | ML Canvas, diagramas y referencias |
+
 ## Instalación
 
 Requiere Python 3.13. Los comandos se corren desde la raíz del repositorio.

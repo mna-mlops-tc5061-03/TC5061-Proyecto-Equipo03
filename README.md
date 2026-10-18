@@ -51,7 +51,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── mi_bici/                 # código del proyecto
 │   ├── config.py            # rutas, URLs, periodo, semilla, umbrales y experimento de MLflow
 │   ├── dataset.py           # ingesta de los datos de MiBici (plantilla, pendiente)
-│   ├── features.py          # variables por pregunta: P1 listo, P2 y P3 pendientes
+│   ├── features.py          # variables por pregunta: P1 y P2 listos, P3 pendiente
 │   ├── plots.py             # gráficas (plantilla, pendiente)
 │   └── modeling/
 │       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow

@@ -4,9 +4,10 @@ Convención para P1 y P2: cada fila es el periodo que se quiere predecir y todas
 vienen de periodos anteriores (`shift` de al menos 1). Así ninguna usa información del futuro.
 """
 
+import numpy as np
 import pandas as pd
 
-from mi_bici.config import BLOQUE_HORAS, FESTIVOS
+from mi_bici.config import BLOQUE_HORAS, CORTE_PRUEBA, FESTIVOS, MIN_DIAS_PERFIL
 from mi_bici.dataset import parse_datetime_series
 
 
@@ -200,3 +201,72 @@ def etiqueta_riesgo(flujo: pd.DataFrame, umbral: float, horas: int = BLOQUE_HORA
     flujo["hora"] = flujo["bloque"].dt.hour
     flujo = agregar_calendario(flujo, "bloque")
     return flujo.dropna().reset_index(drop=True)
+
+
+# Variables del perfil de uso que entran al clustering de P3. Las demográficas solo describen
+# los grupos: no se usan para formarlos
+VARIABLES_PERFIL_USO = [f"hora_{h:02d}" for h in range(24)] + [
+    "fin_de_semana",
+    "balance_neto",
+    "viajes_por_dia_log",
+]
+
+
+def perfil_estacion(
+    viajes: pd.DataFrame,
+    estaciones: pd.DataFrame,
+    corte: str = CORTE_PRUEBA,
+    min_dias: int = MIN_DIAS_PERFIL,
+) -> pd.DataFrame:
+    """Construye el perfil de uso de cada estación para agruparlas en P3.
+
+    Solo usa viajes anteriores a `corte`, el periodo de entrenamiento. Deja fuera las estaciones
+    con menos de `min_dias` días con viajes, porque su perfil todavía no es representativo.
+
+    El perfil de uso, que es lo que agrupa el clustering, tiene:
+    - La proporción de salidas por hora del día (24 columnas). Distingue estaciones de zonas de
+      trabajo (picos de tarde), residenciales (picos de mañana) y de ocio.
+    - La proporción de salidas en fin de semana.
+    - El balance neto relativo, (llegadas - salidas) / total, que separa las estaciones que se
+      vacían de las que se llenan.
+    - Los viajes por día en escala logarítmica, para que el volumen no domine a las proporciones.
+
+    Además calcula `pct_usuarias` y `edad_mediana`, agregados por estación. Solo sirven para
+    describir los grupos y no entran al clustering.
+
+    Args:
+        viajes: Viajes procesados por la ingesta.
+        estaciones: Estaciones procesadas por la ingesta.
+        corte: Fecha de inicio del periodo de prueba. Los viajes desde esa fecha no se usan.
+        min_dias: Días mínimos con viajes para incluir una estación.
+
+    Returns:
+        Una fila por estación con `VARIABLES_PERFIL_USO`, `pct_usuarias`, `edad_mediana`,
+        `nombre`, `latitud` y `longitud`.
+    """
+    viajes = convertir_fechas(viajes)
+    viajes = viajes[viajes["inicio"] < corte]
+    dias_activa = viajes.groupby("origen_id")["inicio"].agg(lambda s: s.dt.normalize().nunique())
+    viajes = viajes[viajes["origen_id"].isin(dias_activa[dias_activa >= min_dias].index)]
+
+    por_hora = pd.crosstab(viajes["origen_id"], viajes["inicio"].dt.hour, normalize="index")
+    por_hora = por_hora.reindex(columns=range(24), fill_value=0)
+    por_hora.columns = [f"hora_{h:02d}" for h in por_hora.columns]
+    salidas = viajes.groupby("origen_id").size()
+    llegadas = viajes.groupby("destino_id").size().reindex(salidas.index, fill_value=0)
+    dias = viajes["inicio"].dt.normalize().nunique()
+
+    conocido = viajes[viajes["genero"].isin(["M", "F"])]
+    edad = viajes["inicio"].dt.year - viajes["nacimiento"].astype("float")
+
+    perfil = por_hora.assign(
+        fin_de_semana=(viajes["inicio"].dt.dayofweek >= 5).groupby(viajes["origen_id"]).mean(),
+        balance_neto=(llegadas - salidas) / (llegadas + salidas),
+        viajes_por_dia_log=np.log1p(salidas / dias),
+        pct_usuarias=(conocido["genero"] == "F").groupby(conocido["origen_id"]).mean(),
+        edad_mediana=edad.groupby(viajes["origen_id"]).median(),
+    )
+    perfil.index.name = "estacion_id"
+    return perfil.reset_index().merge(
+        estaciones[["estacion_id", "nombre", "latitud", "longitud"]], on="estacion_id"
+    )

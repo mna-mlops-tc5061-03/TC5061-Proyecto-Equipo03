@@ -27,6 +27,18 @@ VIAJES_DIR = PROCESSED_DATA_DIR / "viajes"
 ESTACIONES_FILE = PROCESSED_DATA_DIR / "estaciones.parquet"
 MANIFEST_FILE = DATA_DIR / "manifest.json"
 
+# Diccionario de columnas para limpieza
+COLUMN_PATTERNS_REGEX = {
+    "viaje": r"^viaje",
+    "usuario": r"^usuario",
+    "genero": r"^genero",
+    "inicio": r"^inicio",
+    "fin": r"^fin",
+    "origen": r"^origen",
+    "destino": r"^destino",
+    "nacimiento": r"naci",
+}
+
 # Portal de datos abiertos de MiBici. Cada archivo tiene un ID propio en la URL, por eso se
 # fijan aquí en lugar de leer la página, que puede cambiar
 URL_BASE = "https://mibici.net/site/assets/files"

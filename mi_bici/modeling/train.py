@@ -146,14 +146,19 @@ class ExperimentoRiesgo(ExperimentoBase):
         """Evalúa en prueba. El baseline repite el riesgo del mismo bloque la semana anterior.
 
         Returns:
-            `test_recall`, `test_precision`, `test_f1` y `test_average_precision`.
+            `test_recall`, `test_precision`, `test_f1`, `test_average_precision` y la proporción
+            de bloques en riesgo (`train_tasa_riesgo`, `test_tasa_riesgo`).
         """
         if self.modelo is None:
             self.pred = self.puntaje = self.test["riesgo_semana_anterior"].to_numpy()
         else:
             self.pred = self.modelo.predict(self.X_test)
             self.puntaje = self.modelo.predict_proba(self.X_test)[:, 1]
-        return metricas_clasificacion(self.test["riesgo"], self.pred, self.puntaje)
+        metricas = metricas_clasificacion(self.test["riesgo"], self.pred, self.puntaje)
+        # La tasa real de riesgo justifica el umbral y el uso de average precision
+        metricas["train_tasa_riesgo"] = self.train["riesgo"].mean()
+        metricas["test_tasa_riesgo"] = self.test["riesgo"].mean()
+        return metricas
 
     def artefactos(self, carpeta: Path) -> list[Path]:
         """Guarda la matriz de confusión y, en el candidato, la curva de precisión y recall.
@@ -202,7 +207,9 @@ class ExperimentoGrupos(ExperimentoBase):
     def preparar(self) -> None:
         """Construye el perfil de uso de cada estación con el periodo de entrenamiento."""
         self.perfil = perfil_estacion(load_processed_travels(), load_processed_stations())
-        self.perfil["municipio"] = self.perfil["nombre"].str.extract(r"\((\w+)-", expand=False)
+        municipio = self.perfil["nombre"].str.extract(r"\((\w+)-", expand=False)
+        # Una estación sin prefijo en el nombre queda en su propio grupo en lugar de NaN
+        self.perfil["municipio"] = municipio.fillna("SIN")
         self.X_train = self.perfil[VARIABLES_PERFIL_USO]
         # Mismo espacio escalado para medir baseline y candidato con la misma vara
         self.X_escalado = StandardScaler().fit_transform(self.X_train)

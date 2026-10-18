@@ -60,7 +60,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ```
 ├── mi_bici/                 # código del proyecto
 │   ├── config.py            # rutas, URLs, periodo, semilla, umbrales y experimento de MLflow
-│   ├── dataset.py           # ingesta de los datos de MiBici (plantilla, pendiente)
+│   ├── dataset.py           # ingesta: descarga, limpieza, Parquet y manifiesto
 │   ├── features.py          # variables de P1, P2 y P3, sin información del futuro
 │   ├── plots.py             # gráficas que se registran como artefactos
 │   └── modeling/

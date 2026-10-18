@@ -9,6 +9,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import requests
 from tqdm import tqdm
+
 # pyrefly: ignore[missing-import]
 import typer
 
@@ -254,6 +255,25 @@ def clean_data_stations(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def parse_datetime_series(series: pd.Series) -> pd.Series:
+    """Parsea una serie de fechas detectando automáticamente el formato (ISO o DD/MM/YYYY con o sin segundos)."""
+    valido = series.dropna()
+    if valido.empty:
+        return pd.to_datetime(series)
+
+    primer_valor = str(valido.iloc[0]).strip()
+    if "-" in primer_valor:
+        # Formato ISO (YYYY-MM-DD HH:MM:SS, YYYY-MM-DD HH:MM, o ISO con T) a velocidad nativa en C
+        return pd.to_datetime(series, format="ISO8601", errors="coerce")
+    elif "/" in primer_valor:
+        # Formato día/mes/año (DD/MM/YYYY HH:MM:SS o DD/MM/YYYY HH:MM)
+        fmt = "%d/%m/%Y %H:%M:%S" if primer_valor.count(":") >= 2 else "%d/%m/%Y %H:%M"
+        return pd.to_datetime(series, format=fmt, errors="coerce")
+    else:
+        # Fallback de seguridad
+        return pd.to_datetime(series, format="mixed", dayfirst=True, errors="coerce")
+
+
 def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     """Proceso de limpieza de datos de CSV viajes."""
     total_filas_inicial = len(df)
@@ -276,12 +296,13 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     # Paso 2: Eliminar columnas innecesarias para P1, P2, P3
     df = df.drop(columns=["viaje", "usuario"], errors="ignore")
 
-    # Paso 3: Eliminar columnas con fechas de nacimiento corruptas
-    df = df[df["nacimiento"].notna()]
+    # Paso 3: Eliminar filas con nulos en columnas esenciales
+    mask_notna = df["nacimiento"].notna()
     if "origen" in df.columns:
-        df = df[df["origen"].notna()]
+        mask_notna &= df["origen"].notna()
     if "destino" in df.columns:
-        df = df[df["destino"].notna()]
+        mask_notna &= df["destino"].notna()
+    df = df[mask_notna]
 
     # Paso 4: Parsear como ints columnas en float
     df["nacimiento"] = df["nacimiento"].astype(int)
@@ -289,8 +310,8 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     df["destino"] = df["destino"].astype(int)
 
     # Paso 5: Normalizar columnas de fecha y hora. Nueva columna de minutos
-    df["inicio"] = pd.to_datetime(df["inicio"], format="mixed", dayfirst=True, errors="coerce")
-    df["fin"] = pd.to_datetime(df["fin"], format="mixed", dayfirst=True, errors="coerce")
+    df["inicio"] = parse_datetime_series(df["inicio"])
+    df["fin"] = parse_datetime_series(df["fin"])
 
     # Filtrar registros donde no se pudo parsear fecha
     df = df[df["inicio"].notna() & df["fin"].notna()]
@@ -304,10 +325,11 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     df["genero"] = df["genero"].fillna("NB")
 
     # Paso 7: Eliminar rows basura que son posibles errores que no aportan nada
-    # Escenario: Si hay viajes que duran menos de 2 minutos y son originales y destino, eliminarlos
-    df = df.drop(df[(df["duracion_min"] < 2) & (df["origen"] == df["destino"])].index)
-    # Escenario: Si hay viajes con duracion negativa, elimnarlos
-    df = df.drop(df[df["duracion_min"] < 0].index)
+    # Escenario: Si hay viajes que duran menos de 2 minutos y son origen y destino iguales, o duracion negativa, eliminarlos
+    filtro_valido = ~((df["duracion_min"] < 2) & (df["origen"] == df["destino"])) & (
+        df["duracion_min"] >= 0
+    )
+    df = df[filtro_valido]
 
     filas_eliminadas = total_filas_inicial - len(df)
     if (

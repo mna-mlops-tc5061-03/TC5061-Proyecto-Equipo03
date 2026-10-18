@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 from typing import ClassVar
 
+from loguru import logger
 import mlflow
 import mlflow.sklearn
 
@@ -61,6 +62,9 @@ def version_datos(ruta: Path = MANIFEST_FILE) -> str:
         Los primeros 12 caracteres del hash del manifiesto, o `"sin_manifiesto"` si no existe.
     """
     if not ruta.exists():
+        logger.warning(
+            f"No existe {ruta.name}: el run se registra con data_version=sin_manifiesto"
+        )
         return "sin_manifiesto"
     contenido = _sin_fechas(json.loads(ruta.read_text(encoding="utf-8")))
     texto = json.dumps(contenido, sort_keys=True, ensure_ascii=False)
@@ -100,7 +104,7 @@ class ExperimentoBase(ABC):
     nombres: dict[str, str]  # nombre descriptivo del run para cada tipo
     # Tipos internos del modelo que skops (formato de MLflow) debe aceptar. Son seguros porque
     # el modelo lo genera este mismo código
-    tipos_confiables: ClassVar[list[str]] = []
+    tipos_confiables: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, tipo: str = "candidato", semilla: int = SEMILLA):
         if tipo not in TIPOS:
@@ -113,7 +117,9 @@ class ExperimentoBase(ABC):
     def preparar(self) -> None:
         """Lee los datos procesados, construye las variables y separa entrenamiento y prueba.
 
-        Debe dejar `self.X_train` con las variables de entrenamiento.
+        Debe dejar `self.X_train` con las variables de entrenamiento. Sus primeras filas se
+        guardan como ejemplo del modelo, así que no debe traer columnas de viajes individuales
+        (como `genero` o `nacimiento`), solo variables agregadas.
         """
 
     @abstractmethod
@@ -186,6 +192,6 @@ class ExperimentoBase(ABC):
                     self.modelo,
                     name="model",
                     input_example=self.X_train.head(3),
-                    skops_trusted_types=self.tipos_confiables,
+                    skops_trusted_types=list(self.tipos_confiables),
                 )
         return run.info.run_id, metricas

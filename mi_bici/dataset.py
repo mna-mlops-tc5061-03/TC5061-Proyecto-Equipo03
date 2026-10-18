@@ -17,6 +17,7 @@ from mi_bici.config import (
     ANIO_NACIMIENTO_MINIMO,
     COLUMN_PATTERNS_REGEX,
     DURACION_MAXIMA_MIN,
+    DURACION_MINIMA_MIN,
     ESTACIONES_FILE,
     ESTACIONES_METADATA_FILE,
     GENERO_NULL_VALUE,
@@ -359,8 +360,8 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     if "destino_id" in df.columns:
         df["destino_id"] = pd.to_numeric(df["destino_id"], errors="coerce").astype(int)
 
-    # Paso 6: Eliminar valores debajo del minimo de nacimiento
-    df = df[df["nacimiento"] >= ANIO_NACIMIENTO_MINIMO]
+    # Paso 6: Eliminar años de nacimiento inválidos (debajo del mínimo). Los nulos se conservan
+    df = df[df["nacimiento"].isna() | (df["nacimiento"] >= ANIO_NACIMIENTO_MINIMO)]
 
     # Paso 7: Normalizar columnas de fecha y hora. Nueva columna de minutos
     df["inicio"] = parse_datetime_series(df["inicio"])
@@ -378,12 +379,13 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
     if "genero" in df.columns:
         df["genero"] = df["genero"].fillna(GENERO_NULL_VALUE)
 
-    # Paso 9: Eliminar rows basura que son posibles errores que no aportan nada
-    # Escenario: Si hay viajes que duran menos de 2 minutos y son origen y destino iguales, o duracion negativa, eliminarlos
-    filtro_valido = ~((df["duracion_min"] < 2) & (df["duracion_min"] > DURACION_MAXIMA_MIN) & (df["origen_id"] == df["destino_id"])) & (
-        df["duracion_min"] >= 0
-    )
-    df = df[filtro_valido]
+    # Paso 9: Eliminar viajes que son errores: menos de DURACION_MINIMA_MIN en la misma estación
+    # (no se sacó bien la bici), más de DURACION_MAXIMA_MIN (irregular según MiBici) o negativos.
+    # Cada condición se evalúa por separado: basta con que se cumpla una para quitar el viaje
+    muy_corto = (df["duracion_min"] < DURACION_MINIMA_MIN) & (df["origen_id"] == df["destino_id"])
+    muy_largo = df["duracion_min"] > DURACION_MAXIMA_MIN
+    negativo = df["duracion_min"] < 0
+    df = df[~(muy_corto | muy_largo | negativo)]
 
     filas_eliminadas = total_filas_inicial - len(df)
     if (

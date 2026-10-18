@@ -31,6 +31,18 @@ módulo escribe estos valores a mano.
 MLflow guarda los runs en `mlflow.db` local. Para usar un servidor compartido basta con definir
 `MLFLOW_TRACKING_URI` en un archivo `.env`, que no se versiona.
 
+Cada run se registra igual, desde `mi_bici/modeling/base.py`:
+
+| Qué | Contenido |
+|---|---|
+| Parámetros | `fecha_inicio`, `fecha_fin`, `corte_prueba`, `data_version`, `semilla`, `filas_train`, modelo e hiperparámetros |
+| Métricas | Con el conjunto en el nombre: `test_mae`, `test_recall`, `train_silhouette`… |
+| Etiquetas | `equipo`, `pregunta`, `tipo` (baseline o candidato), `git_commit` y `git_dirty` |
+| Artefactos | Gráficas o tablas de cada pregunta, y el modelo en los candidatos |
+
+`data_version` son los primeros 12 caracteres del hash de `data/manifest.json` (sin su fecha de
+creación), así que dos ingestas con los mismos datos dan la misma versión.
+
 ## Estructura
 
 Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/) 2.3.0.
@@ -41,7 +53,10 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── dataset.py           # ingesta de los datos de MiBici (plantilla, pendiente)
 │   ├── features.py          # variables de cada pregunta (plantilla, pendiente)
 │   ├── plots.py             # gráficas (plantilla, pendiente)
-│   └── modeling/            # entrenamiento y evaluación (plantilla, pendiente)
+│   └── modeling/
+│       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow
+│       ├── evaluate.py      # métricas por tipo de tarea (test_*, train_*)
+│       └── train.py         # experimentos de P1, P2 y P3 (plantilla, pendiente)
 ├── data/                    # raw, interim, processed y external. No se versiona
 ├── models/                  # modelos serializados. No se versionan
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb
@@ -84,3 +99,22 @@ Request sigue el mismo formato.
 | `test` | Pruebas |
 | `perf` | Mejora de rendimiento |
 | `build` / `ci` | Empaquetado o integración continua |
+
+**Docstrings:** estilo Google en español, para que todo el código se lea igual. El resumen va en
+una línea, con verbo en tercera persona (Calcula, Registra, Descarga). Si hace falta, sigue un
+párrafo con el porqué y las secciones `Args` y `Returns`.
+
+```python
+def metricas_regresion(y, pred) -> dict:
+    """Calcula las métricas de regresión de P1.
+
+    El MAE se lee en viajes, que es lo que el operador entiende.
+
+    Args:
+        y: Valores reales del conjunto de prueba.
+        pred: Valores predichos.
+
+    Returns:
+        `test_mae`, `test_rmse` y `test_r2`.
+    """
+```

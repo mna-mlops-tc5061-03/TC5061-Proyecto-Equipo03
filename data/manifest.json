@@ -15,10 +15,10 @@
   },
   "viajes": {
     "directory": "viajes",
-    "md5": "680907bd7f10ff61ab36c95b61f77a79",
+    "md5": "b6f9796299d27627f4c0ad6ae44464e0",
     "total_files": 12,
-    "total_size_bytes": 31864832,
-    "total_rows": 4496266,
+    "total_size_bytes": 30978184,
+    "total_rows": 4332379,
     "columns": [
       "genero",
       "inicio",

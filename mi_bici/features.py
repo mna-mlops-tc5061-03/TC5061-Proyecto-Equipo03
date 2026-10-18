@@ -6,7 +6,7 @@ vienen de periodos anteriores (`shift` de al menos 1). Así ninguna usa informac
 
 import pandas as pd
 
-from mi_bici.config import FESTIVOS
+from mi_bici.config import BLOQUE_HORAS, FESTIVOS
 from mi_bici.dataset import parse_datetime_series
 
 
@@ -129,3 +129,74 @@ def demanda_diaria(viajes: pd.DataFrame, estaciones: pd.DataFrame) -> pd.DataFra
     demanda = agregar_calendario(demanda, "fecha")
     demanda = demanda.merge(estaciones[["estacion_id", "capacidad"]], on="estacion_id")
     return demanda.dropna().reset_index(drop=True)
+
+
+def flujo_por_bloque(
+    viajes: pd.DataFrame, estaciones: pd.DataFrame, horas: int = BLOQUE_HORAS
+) -> pd.DataFrame:
+    """Construye salidas, llegadas y flujo neto por estación y bloque de horas.
+
+    MiBici no publica cuántas bicicletas hay en cada estación. El flujo neto (llegadas menos
+    salidas) es la mejor aproximación: si en un bloque salen muchas más bicis de las que llegan,
+    la estación se vacía, y si llegan muchas más, se llena.
+
+    Args:
+        viajes: Viajes procesados por la ingesta.
+        estaciones: Estaciones procesadas por la ingesta.
+        horas: Tamaño del bloque en horas.
+
+    Returns:
+        Una fila por estación y bloque con `salidas`, `llegadas`, `flujo_neto` y `capacidad`.
+        Los bloques sin viajes quedan en 0.
+    """
+    viajes = convertir_fechas(viajes)
+    frecuencia = f"{horas}h"
+    salidas = (
+        viajes.assign(bloque=viajes["inicio"].dt.floor(frecuencia))
+        .groupby(["origen_id", "bloque"])
+        .size()
+        .rename("salidas")
+    )
+    llegadas = (
+        viajes.assign(bloque=viajes["fin"].dt.floor(frecuencia))
+        .groupby(["destino_id", "bloque"])
+        .size()
+        .rename("llegadas")
+    )
+    salidas.index.names = llegadas.index.names = ["estacion_id", "bloque"]
+    conteos = pd.concat([salidas, llegadas], axis=1).fillna(0).reset_index()
+    flujo = _malla_completa(conteos, "bloque", frecuencia)
+    flujo["flujo_neto"] = flujo["llegadas"] - flujo["salidas"]
+    return flujo.merge(estaciones[["estacion_id", "capacidad"]], on="estacion_id")
+
+
+def etiqueta_riesgo(flujo: pd.DataFrame, umbral: float, horas: int = BLOQUE_HORAS) -> pd.DataFrame:
+    """Construye la etiqueta de riesgo de P2 y sus variables.
+
+    Una estación está en riesgo si en el bloque gana o pierde, en neto, al menos `umbral` veces
+    su capacidad. Las variables vienen solo de bloques anteriores: el flujo de los dos bloques
+    previos, las salidas y llegadas del bloque previo, y el riesgo del mismo bloque una semana
+    antes, que también es el baseline. Se excluyen las estaciones con capacidad 0, porque no se
+    puede medir la fracción.
+
+    Args:
+        flujo: Resultado de `flujo_por_bloque`.
+        umbral: Fracción de la capacidad que define el riesgo, por ejemplo `UMBRAL_RIESGO`.
+        horas: Tamaño del bloque en horas, el mismo que en `flujo_por_bloque`.
+
+    Returns:
+        Una fila por estación y bloque con `riesgo` (objetivo), `flujo_neto_lag_1`,
+        `flujo_neto_lag_2`, `salidas_lag_1`, `llegadas_lag_1`, `riesgo_semana_anterior`,
+        `hora`, `dia_semana`, `festivo` y `capacidad`.
+    """
+    flujo = flujo[flujo["capacidad"] > 0].copy()
+    flujo["riesgo"] = (flujo["flujo_neto"].abs() >= umbral * flujo["capacidad"]).astype(int)
+    bloques_semana = 7 * 24 // horas
+    flujo = agregar_rezagos(flujo, "flujo_neto", [1, 2])
+    flujo = agregar_rezagos(flujo, "salidas", [1])
+    flujo = agregar_rezagos(flujo, "llegadas", [1])
+    flujo = agregar_rezagos(flujo, "riesgo", [bloques_semana])
+    flujo = flujo.rename(columns={f"riesgo_lag_{bloques_semana}": "riesgo_semana_anterior"})
+    flujo["hora"] = flujo["bloque"].dt.hour
+    flujo = agregar_calendario(flujo, "bloque")
+    return flujo.dropna().reset_index(drop=True)

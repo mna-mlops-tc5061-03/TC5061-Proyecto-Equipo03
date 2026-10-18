@@ -60,6 +60,12 @@ create_environment:
 #################################################################################
 
 
+## Train baselines and candidates and log them to MLflow
+.PHONY: train
+train:
+	$(PYTHON_INTERPRETER) -m mi_bici.modeling.train
+
+
 ## Make dataset
 .PHONY: data
 data: requirements

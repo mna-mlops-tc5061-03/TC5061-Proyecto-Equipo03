@@ -125,6 +125,27 @@ UMBRAL_RIESGO = 0.4
 K_CANDIDATOS = list(range(3, 9))
 MIN_DIAS_PERFIL = 30
 
+# Variables que usa cada modelo. Todas vienen de periodos anteriores al que se predice
+VARIABLES_P1 = [
+    "viajes_lag_1",
+    "viajes_lag_7",
+    "viajes_media_7",
+    "dia_semana",
+    "festivo",
+    "capacidad",
+]
+VARIABLES_P2 = [
+    "flujo_neto_lag_1",
+    "flujo_neto_lag_2",
+    "salidas_lag_1",
+    "llegadas_lag_1",
+    "riesgo_semana_anterior",
+    "hora",
+    "dia_semana",
+    "festivo",
+    "capacidad",
+]
+
 SEMILLA = 42
 
 # MLflow: local por defecto. Para un servidor compartido basta con MLFLOW_TRACKING_URI en .env

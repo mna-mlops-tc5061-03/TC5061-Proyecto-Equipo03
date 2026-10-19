@@ -13,8 +13,8 @@ operación: demanda por estación (regresión), riesgo de quedarse sin bicis o s
 
 | | Pregunta | Tarea | Métrica principal |
 |---|---|---|---|
-| **P1** | ¿Cuántos viajes saldrán de cada estación por día? | Regresión | MAE (en viajes) |
-| **P2** | ¿Qué estaciones están en riesgo de quedarse sin bicis o sin anclajes en la siguiente hora? | Clasificación | Recall |
+| **P1** | ¿Cuántos viajes saldrán de cada estación al día siguiente? | Regresión | MAE (en viajes) |
+| **P2** | ¿Qué estaciones están en riesgo de quedarse sin bicis o sin anclajes en el siguiente bloque de 3 horas? | Clasificación | Average precision |
 | **P3** | ¿Qué grupos de estaciones tienen patrones de uso parecidos? | Clustering | Silhouette |
 
 Las tres se formularon con el [Machine Learning Canvas](https://www.ownml.co/machine-learning-canvas), disponible en `references/`.
@@ -24,9 +24,9 @@ Las tres se formularon con el [Machine Learning Canvas](https://www.ownml.co/mac
 Se usan los datos abiertos de [MiBici](https://mibici.net/es/datos-abiertos/), el sistema de bicicleta pública del Área Metropolitana de Guadalajara:
 
 - **Viajes** (`datos_abiertos_AAAA_MM.csv`): un archivo por mes, con identificador del viaje y del usuario, género, año de nacimiento, fecha y hora de inicio y fin, y estaciones de origen y destino.
-- **Estaciones** (`nomenclatura_AAAA_MM.csv`): catálogo con identificador, nombre y ubicación de cada estación.
+- **Estaciones** (`nomenclatura_AAAA_MM.csv`): catálogo con identificador, nombre, ubicación y capacidad de cada estación.
 
-El periodo de análisis y el corte de prueba se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de cada archivo como versión de los datos.
+Se usan 12 meses, de octubre de 2025 a septiembre de 2026: 4,332,379 viajes después de la limpieza y 484 estaciones. El periodo y el corte de prueba se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias, ya sin los identificadores del viaje y del usuario, en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de los datos procesados como versión de los datos.
 
 ## Instalación
 
@@ -46,11 +46,11 @@ cualquier computadora.
 Con el entorno activado (`source .venv/bin/activate`):
 
 ```bash
-make data     # descarga, limpia y versiona los datos de MiBici
-make train    # registra en MLflow un baseline y un candidato de P1, P2 y P3 (6 runs)
-mlflow ui     # ver los runs en http://127.0.0.1:5000
-make test     # corre las pruebas de tests/
-make lint     # revisa el formato del código
+make data              # descarga, limpia y versiona los datos de MiBici
+make train             # registra en MLflow un baseline y un candidato de P1, P2 y P3 (6 runs)
+mlflow ui --port 5001  # ver los runs en http://127.0.0.1:5001 (en macOS AirPlay ocupa el 5000)
+make test              # corre las pruebas de tests/
+make lint              # revisa el formato del código
 ```
 
 Para correr solo una parte: `python -m mi_bici.modeling.train --pregunta P2 --modelo candidato`.
@@ -74,7 +74,9 @@ Cada run se registra igual, desde `mi_bici/modeling/base.py`:
 | Artefactos | Gráficas o tablas de cada pregunta, y el modelo en los candidatos |
 
 `data_version` son los primeros 12 caracteres del hash de `data/manifest.json` (sin su fecha de
-creación), así que dos ingestas con los mismos datos dan la misma versión.
+creación). Los viajes dan el mismo hash en cualquier computadora. El de estaciones puede cambiar
+según el entorno aunque las filas y el tamaño sean iguales: si después de `make data` `git status`
+marca `data/manifest.json`, restáuralo con `git restore data/manifest.json` antes de `make train`.
 
 ## Buenas prácticas aplicadas
 
@@ -88,6 +90,7 @@ creación), así que dos ingestas con los mismos datos dan la misma versión.
 | Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
 | Pruebas y estilo | Pruebas unitarias en `tests/` y formato revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
+| Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
 
 ## Estructura
@@ -172,7 +175,7 @@ def metricas_regresion(y, pred) -> dict:
 
 | Integrante | Matrícula | Rol |
 |---|---|---|
-| Anaí Barrera | A01797380 | Exploración de datos y documentación |
-| Gerardo González Martínez | A01840096 | Configuración del proyecto y registro de experimentos |
-| Miguel Castillo | A01840045 | Ingesta y versión de los datos |
-| Sebastián Estrada | A00805402 | ML Canvas, diagramas y referencias |
+| Anaí Lael Barrera Magaña | A01797380 | Exploración de datos y README |
+| Gerardo González Martínez | A01840096 | Configuración, registro común en MLflow, variables y experimento base |
+| Miguel Ángel Ramírez Castillo | A01840045 | Ingesta reproducible y administración del repositorio |
+| Sebastián Estrada García | A00805402 | ML Canvas, diagramas, referencias, evidencia de MLflow y documento de la propuesta |

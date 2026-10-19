@@ -46,11 +46,11 @@ cualquier computadora.
 Con el entorno activado (`source .venv/bin/activate`):
 
 ```bash
-make data     # descarga, limpia y versiona los datos de MiBici
-make train    # registra en MLflow un baseline y un candidato de P1, P2 y P3 (6 runs)
-mlflow ui     # ver los runs en http://127.0.0.1:5000
-make test     # corre las pruebas de tests/
-make lint     # revisa el formato del código
+make data              # descarga, limpia y versiona los datos de MiBici
+make train             # registra en MLflow un baseline y un candidato de P1, P2 y P3 (6 runs)
+mlflow ui --port 5001  # ver los runs en http://127.0.0.1:5001 (en macOS AirPlay ocupa el 5000)
+make test              # corre las pruebas de tests/
+make lint              # revisa el formato del código
 ```
 
 Para correr solo una parte: `python -m mi_bici.modeling.train --pregunta P2 --modelo candidato`.
@@ -74,7 +74,9 @@ Cada run se registra igual, desde `mi_bici/modeling/base.py`:
 | Artefactos | Gráficas o tablas de cada pregunta, y el modelo en los candidatos |
 
 `data_version` son los primeros 12 caracteres del hash de `data/manifest.json` (sin su fecha de
-creación), así que dos ingestas con los mismos datos dan la misma versión.
+creación). Los viajes dan el mismo hash en cualquier computadora. El de estaciones puede cambiar
+según el entorno aunque las filas y el tamaño sean iguales: si después de `make data` `git status`
+marca `data/manifest.json`, restáuralo con `git restore data/manifest.json` antes de `make train`.
 
 ## Buenas prácticas aplicadas
 
@@ -88,6 +90,7 @@ creación), así que dos ingestas con los mismos datos dan la misma versión.
 | Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
 | Pruebas y estilo | Pruebas unitarias en `tests/` y formato revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
+| Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
 
 ## Estructura
@@ -172,7 +175,7 @@ def metricas_regresion(y, pred) -> dict:
 
 | Integrante | Matrícula | Rol |
 |---|---|---|
-| Anaí Lael Barrera Magaña | A01797380 | Exploración de datos, README y evidencia de MLflow |
+| Anaí Lael Barrera Magaña | A01797380 | Exploración de datos y README |
 | Gerardo González Martínez | A01840096 | Configuración, registro común en MLflow, variables y experimento base |
 | Miguel Ángel Ramírez Castillo | A01840045 | Ingesta reproducible y administración del repositorio |
-| Sebastián Estrada García | A00805402 | ML Canvas, diagramas, referencias y documento de la propuesta |
+| Sebastián Estrada García | A00805402 | ML Canvas, diagramas, referencias, evidencia de MLflow y documento de la propuesta |

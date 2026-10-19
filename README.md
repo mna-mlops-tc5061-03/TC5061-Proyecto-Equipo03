@@ -28,41 +28,6 @@ Se usan los datos abiertos de [MiBici](https://mibici.net/es/datos-abiertos/), e
 
 El periodo de análisis y el corte de prueba se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de cada archivo como versión de los datos.
 
-## Uso
-
-```bash
-# 1. Descargar, limpiar y versionar los datos
-python -m mi_bici.dataset
-
-# 2. Correr los experimentos de P1, P2 y P3
-python -m mi_bici.modeling.train
-
-# 3. Ver los resultados en MLflow
-mlflow ui --backend-store-uri sqlite:///mlflow.db
-```
-
-## Buenas prácticas aplicadas
-
-| Práctica | Cómo se aplica |
-|---|---|
-| Estructura estándar | Plantilla de Cookiecutter Data Science |
-| Datos inmutables y fuera de Git | `data/raw/` no se modifica ni se versiona; solo `data/manifest.json` |
-| Reproducibilidad | Dependencias con versión fija, semilla y configuración centralizada en `config.py`, versión de datos por hash |
-| Código en módulos | Los notebooks solo exploran; la lógica vive en `mi_bici/` |
-| Registro de experimentos | Todos los runs se registran en MLflow con los mismos parámetros, métricas y etiquetas |
-| Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
-| Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
-| Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
-
-## Integrantes
-
-| Integrante | Matrícula | Rol |
-|---|---|---|
-| Anaí Barrera | A01797380 | Exploración de datos y documentación |
-| Gerardo González Martínez | A01840096 | Configuración del proyecto y registro de experimentos |
-| Miguel Castillo | A01840045 | Ingesta y versión de los datos |
-| Sebastián Estrada | A00805402 | ML Canvas, diagramas y referencias |
-
 ## Instalación
 
 Requiere Python 3.13. Los comandos se corren desde la raíz del repositorio.
@@ -78,10 +43,14 @@ cualquier computadora.
 
 ## Ejecución
 
+Con el entorno activado (`source .venv/bin/activate`):
+
 ```bash
 make data     # descarga, limpia y versiona los datos de MiBici
 make train    # registra en MLflow un baseline y un candidato de P1, P2 y P3 (6 runs)
 mlflow ui     # ver los runs en http://127.0.0.1:5000
+make test     # corre las pruebas de tests/
+make lint     # revisa el formato del código
 ```
 
 Para correr solo una parte: `python -m mi_bici.modeling.train --pregunta P2 --modelo candidato`.
@@ -107,6 +76,20 @@ Cada run se registra igual, desde `mi_bici/modeling/base.py`:
 `data_version` son los primeros 12 caracteres del hash de `data/manifest.json` (sin su fecha de
 creación), así que dos ingestas con los mismos datos dan la misma versión.
 
+## Buenas prácticas aplicadas
+
+| Práctica | Cómo se aplica |
+|---|---|
+| Estructura estándar | Plantilla de Cookiecutter Data Science |
+| Datos inmutables y fuera de Git | `data/raw/` no se modifica ni se versiona; solo `data/manifest.json` |
+| Reproducibilidad | Dependencias con versión fija, semilla y configuración centralizada en `config.py`, versión de datos por hash |
+| Código en módulos | Los notebooks solo exploran; la lógica vive en `mi_bici/` |
+| Registro de experimentos | Todos los runs se registran en MLflow con los mismos parámetros, métricas y etiquetas |
+| Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
+| Pruebas y estilo | Pruebas unitarias en `tests/` y formato revisado con ruff |
+| Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
+| Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
+
 ## Estructura
 
 Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/) 2.3.0.
@@ -114,13 +97,6 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ```
 ├── mi_bici/                 # código del proyecto
 │   ├── config.py            # rutas, URLs, periodo, semilla, umbrales y experimento de MLflow
-│   ├── dataset.py           # ingesta de los datos de MiBici (plantilla, pendiente)
-│   ├── features.py          # variables de cada pregunta (plantilla, pendiente)
-│   ├── plots.py             # gráficas (plantilla, pendiente)
-│   └── modeling/
-│       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow
-│       ├── evaluate.py      # métricas por tipo de tarea (test_*, train_*)
-│       └── train.py         # experimentos de P1, P2 y P3 (plantilla, pendiente)
 │   ├── dataset.py           # ingesta: descarga, limpieza, Parquet y manifiesto
 │   ├── features.py          # variables de P1, P2 y P3, sin información del futuro
 │   ├── plots.py             # gráficas que se registran como artefactos
@@ -133,14 +109,16 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb
 ├── references/              # ML Canvas, diagramas y referencias
 ├── reports/                 # reporte de la propuesta y figures/
+├── tests/                   # pruebas unitarias
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make requirements, make lint, make format, make clean
+├── Makefile                 # make data, make train, make test, make lint, make format
+├── MLproject                # punto de entrada de MLflow
 ├── requirements.txt         # dependencias con versiones fijas
 └── pyproject.toml           # metadatos del paquete y configuración de ruff
 ```
 
 `.gitignore` excluye los datos de MiBici, `mlflow.db`, `mlruns/`, `mlartifacts/`, `.env` y los
-modelos serializados. De `data/` solo se versionará `data/manifest.json`, la versión de los datos.
+modelos serializados. De `data/` solo se versiona `data/manifest.json`, la versión de los datos.
 
 ## Flujo de trabajo
 
@@ -189,3 +167,12 @@ def metricas_regresion(y, pred) -> dict:
         `test_mae`, `test_rmse` y `test_r2`.
     """
 ```
+
+## Integrantes
+
+| Integrante | Matrícula | Rol |
+|---|---|---|
+| Anaí Barrera | A01797380 | Exploración de datos y documentación |
+| Gerardo González Martínez | A01840096 | Configuración del proyecto y registro de experimentos |
+| Miguel Castillo | A01840045 | Ingesta y versión de los datos |
+| Sebastián Estrada | A00805402 | ML Canvas, diagramas y referencias |

@@ -13,8 +13,8 @@ operación: demanda por estación (regresión), riesgo de quedarse sin bicis o s
 
 | | Pregunta | Tarea | Métrica principal |
 |---|---|---|---|
-| **P1** | ¿Cuántos viajes saldrán de cada estación por día? | Regresión | MAE (en viajes) |
-| **P2** | ¿Qué estaciones están en riesgo de quedarse sin bicis o sin anclajes en la siguiente hora? | Clasificación | Recall |
+| **P1** | ¿Cuántos viajes saldrán de cada estación al día siguiente? | Regresión | MAE (en viajes) |
+| **P2** | ¿Qué estaciones están en riesgo de quedarse sin bicis o sin anclajes en el siguiente bloque de 3 horas? | Clasificación | Average precision |
 | **P3** | ¿Qué grupos de estaciones tienen patrones de uso parecidos? | Clustering | Silhouette |
 
 Las tres se formularon con el [Machine Learning Canvas](https://www.ownml.co/machine-learning-canvas), disponible en `references/`.
@@ -24,9 +24,9 @@ Las tres se formularon con el [Machine Learning Canvas](https://www.ownml.co/mac
 Se usan los datos abiertos de [MiBici](https://mibici.net/es/datos-abiertos/), el sistema de bicicleta pública del Área Metropolitana de Guadalajara:
 
 - **Viajes** (`datos_abiertos_AAAA_MM.csv`): un archivo por mes, con identificador del viaje y del usuario, género, año de nacimiento, fecha y hora de inicio y fin, y estaciones de origen y destino.
-- **Estaciones** (`nomenclatura_AAAA_MM.csv`): catálogo con identificador, nombre y ubicación de cada estación.
+- **Estaciones** (`nomenclatura_AAAA_MM.csv`): catálogo con identificador, nombre, ubicación y capacidad de cada estación.
 
-El periodo de análisis y el corte de prueba se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de cada archivo como versión de los datos.
+Se usan 12 meses, de octubre de 2025 a septiembre de 2026: 4,332,379 viajes después de la limpieza y 484 estaciones. El periodo y el corte de prueba se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias, ya sin los identificadores del viaje y del usuario, en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de los datos procesados como versión de los datos.
 
 ## Instalación
 
@@ -172,7 +172,7 @@ def metricas_regresion(y, pred) -> dict:
 
 | Integrante | Matrícula | Rol |
 |---|---|---|
-| Anaí Barrera | A01797380 | Exploración de datos y documentación |
-| Gerardo González Martínez | A01840096 | Configuración del proyecto y registro de experimentos |
-| Miguel Castillo | A01840045 | Ingesta y versión de los datos |
-| Sebastián Estrada | A00805402 | ML Canvas, diagramas y referencias |
+| Anaí Lael Barrera Magaña | A01797380 | Exploración de datos, README y evidencia de MLflow |
+| Gerardo González Martínez | A01840096 | Configuración, registro común en MLflow, variables y experimento base |
+| Miguel Ángel Ramírez Castillo | A01840045 | Ingesta reproducible y administración del repositorio |
+| Sebastián Estrada García | A00805402 | ML Canvas, diagramas, referencias y documento de la propuesta |

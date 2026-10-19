@@ -26,6 +26,8 @@ GitHub. (s.f.-c). *About pull request reviews*. GitHub Docs. Recuperado el 17 de
 
 GitHub. (s.f.-d). *GitHub flow*. GitHub Docs. Recuperado el 17 de octubre de 2026, de https://docs.github.com/en/get-started/using-github/github-flow
 
+Huyen, C. (2022). *Designing machine learning systems: An iterative process for production-ready applications*. O'Reilly Media.
+
 Lauchande, N. (2021). *Machine learning engineering with MLflow: Manage the end-to-end machine learning life cycle with MLflow*. Packt Publishing.
 
 Maddula, S. (2025, 19 de marzo). *Feature engineering in machine learning: A practical guide*. DataCamp. https://www.datacamp.com/tutorial/feature-engineering
@@ -57,6 +59,7 @@ Wilson, B. (2022). *Machine learning engineering in action*. Manning Publication
 | Decisión del proyecto | Fuentes |
 |---|---|
 | Formular P1, P2 y P3 con el ML Canvas | Dorard (2015, 2018) |
+| Empezar con un baseline simple por pregunta | Huyen (2022) |
 | Datos de viajes y estaciones | MiBici (s.f.) |
 | Estructura del repositorio, datos crudos inmutables y fuera de Git, notebooks solo para explorar, secretos en `.env` | DrivenData (s.f.-a, s.f.-b, s.f.-c, s.f.-d) |
 | Código en módulos en lugar de notebooks; evitar deuda técnica | Sculley et al. (2015); Wilson (2022) |

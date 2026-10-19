@@ -1,0 +1,5 @@
+name: mi-bici-equipo-3
+
+entry_points:
+    load:
+        command: "python -m mi_bici.dataset"

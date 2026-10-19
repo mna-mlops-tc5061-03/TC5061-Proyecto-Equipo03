@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "estaciones": {
+    "file": "estaciones.parquet",
+    "md5": "f4e659df2c6a11f0b57c301adb1b0283",
+    "size_bytes": 26863,
+    "num_rows": 484,
+    "columns": [
+      "estacion_id",
+      "nombre",
+      "latitud",
+      "longitud",
+      "capacidad"
+    ]
+  },
+  "viajes": {
+    "directory": "viajes",
+    "md5": "b6f9796299d27627f4c0ad6ae44464e0",
+    "total_files": 12,
+    "total_size_bytes": 30978184,
+    "total_rows": 4332379,
+    "columns": [
+      "genero",
+      "inicio",
+      "fin",
+      "origen_id",
+      "destino_id",
+      "nacimiento",
+      "duracion_min"
+    ]
+  }
+}

@@ -11,11 +11,13 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 from typing import ClassVar
 import warnings
 
 from loguru import logger
 import mlflow
+from mlflow.models import infer_signature
 import mlflow.sklearn
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -40,6 +42,9 @@ warnings.filterwarnings("ignore", message="Hint: Inferred schema contains intege
 
 # Tipos internos de los árboles de HistGradientBoosting que skops debe aceptar al guardar
 ARBOLES_HGB = ("sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",)
+
+# Archivos de configuración que se guardan en cada run, en config/
+ARCHIVOS_CONFIGURACION = ("mi_bici/config.py", "MLproject", "python_env.yaml", "requirements.txt")
 
 
 @dataclass(frozen=True)
@@ -147,6 +152,8 @@ class ExperimentoBase(ABC):
         self.entrada = self.catalogo[modelo]
         self.params = {**self.entrada.por_defecto, **(params or {})}
         self.tipo = "baseline" if self.entrada.clase is None else "candidato"
+        # Etapa del trabajo para filtrar en la UI: baseline, candidate o search
+        self.etapa = "baseline" if self.tipo == "baseline" else "candidate"
         self.semilla = semilla
         self.modelo = None  # estimador de scikit-learn. El baseline es una regla y no tiene
         self.test = None  # conjunto de prueba. P3 no tiene
@@ -244,7 +251,12 @@ class ExperimentoBase(ABC):
 
         Primero ajusta con los meses antes de `CORTE_VALIDACION` y mide en validación, que es con
         lo que se comparan los modelos. Después reentrena con todo el periodo de entrenamiento y
-        mide en prueba, que no se usa para elegir nada.
+        mide en prueba, que no se usa para elegir nada. El tiempo de ese último ajuste queda como
+        `entrenamiento_segundos`, para comparar el costo de los modelos.
+
+        Los artefactos quedan en subcarpetas: `plots/` (gráficas), `data/` (manifiesto y tablas
+        agregadas) y `config/` (parámetros resueltos y archivos de configuración). El modelo queda
+        ligado al run como logged model de MLflow.
 
         Returns:
             El Run ID y las métricas del run.
@@ -255,7 +267,9 @@ class ExperimentoBase(ABC):
             antes = self.train[self.columna_fecha] < CORTE_VALIDACION
             self.entrenar(self.train[antes])
             metricas |= self.evaluar(self.train[~antes], "val")
+        inicio = time.perf_counter()
         self.entrenar(self.train)
+        metricas["entrenamiento_segundos"] = time.perf_counter() - inicio
         if self.test is None:
             metricas |= self.evaluar(self.train, "train")
         else:
@@ -265,18 +279,42 @@ class ExperimentoBase(ABC):
         mlflow.set_experiment(EXPERIMENT_NAME)
         with mlflow.start_run(run_name=f"{self.pregunta}-{self.clave}") as run:
             mlflow.set_tags(
-                {"equipo": EQUIPO, "pregunta": self.pregunta, "tipo": self.tipo, **estado_git()}
+                {
+                    "equipo": EQUIPO,
+                    "question": self.pregunta.lower(),
+                    "model_family": self.entrada.familia,
+                    "stage_of_work": self.etapa,
+                    **estado_git(),
+                }
             )
-            mlflow.log_params(self.parametros())
+            parametros = self.parametros()
+            mlflow.log_params(parametros)
             mlflow.log_metrics(metricas)
+
+            mlflow.log_artifact(str(MANIFEST_FILE), artifact_path="data")
+            # Solo el esquema y el hash de la tabla agregada con que se entrenó, no sus filas
+            mlflow.log_input(
+                mlflow.data.from_pandas(self.X_train, name=f"{self.pregunta.lower()}_train"),
+                context="training",
+            )
+            mlflow.log_text(
+                json.dumps(parametros, indent=2, ensure_ascii=False, default=str),
+                "config/parametros.json",
+            )
+            for archivo in ARCHIVOS_CONFIGURACION:
+                mlflow.log_artifact(str(PROJ_ROOT / archivo), artifact_path="config")
             with tempfile.TemporaryDirectory() as carpeta:
                 for ruta in self.artefactos(Path(carpeta)):
-                    mlflow.log_artifact(str(ruta))
+                    subcarpeta = "plots" if ruta.suffix == ".png" else "data"
+                    mlflow.log_artifact(str(ruta), artifact_path=subcarpeta)
+
             if self.modelo is not None:
+                ejemplo = self.X_train.head(3)
                 mlflow.sklearn.log_model(
                     self.modelo,
                     name="model",
-                    input_example=self.X_train.head(3),
+                    signature=infer_signature(ejemplo, self.modelo.predict(ejemplo)),
+                    input_example=ejemplo,
                     skops_trusted_types=list(self.tipos_confiables),
                 )
         return run.info.run_id, metricas

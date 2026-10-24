@@ -1,9 +1,12 @@
-"""Corre los experimentos base de P1, P2 y P3 y los registra en MLflow.
+"""Corre los experimentos de P1, P2 y P3 y los registra en MLflow.
+
+Cada pregunta tiene un catálogo de modelos. Un run es una pregunta y un modelo del catálogo.
 
 python -m mi_bici.modeling.train
-python -m mi_bici.modeling.train --pregunta P2 --modelo candidato
+python -m mi_bici.modeling.train --question p2 --model hgb --params "learning_rate=0.05"
 """
 
+import ast
 from pathlib import Path
 from typing import ClassVar
 import warnings
@@ -13,7 +16,6 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 from sklearn.metrics import silhouette_score
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import typer
 
@@ -34,7 +36,7 @@ from mi_bici.features import (
     flujo_por_bloque,
     perfil_estacion,
 )
-from mi_bici.modeling.base import ExperimentoBase
+from mi_bici.modeling.base import ExperimentoBase, Modelo
 from mi_bici.modeling.evaluate import (
     metricas_clasificacion,
     metricas_clustering,
@@ -49,16 +51,15 @@ app = typer.Typer()
 
 # Tipos internos de los árboles de HistGradientBoosting que skops debe aceptar al guardar
 ARBOLES_HGB = ("sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",)
-HIPERPARAMETROS_HGB = ("learning_rate", "max_iter", "max_leaf_nodes")
 
 
 class ExperimentoDemanda(ExperimentoBase):
     """Pronostica los viajes que iniciarán mañana en cada estación (P1)."""
 
     pregunta = "P1"
-    nombres: ClassVar[dict[str, str]] = {
-        "baseline": "P1-baseline-semana-anterior",
-        "candidato": "P1-hgb-rezagos",
+    catalogo: ClassVar[dict[str, Modelo]] = {
+        "baseline": Modelo("semana_anterior"),
+        "hgb": Modelo("gradient_boosting", HistGradientBoostingRegressor),
     }
     tipos_confiables = ARBOLES_HGB
 
@@ -70,9 +71,9 @@ class ExperimentoDemanda(ExperimentoBase):
         self.X_train, self.X_test = self.train[VARIABLES_P1], self.test[VARIABLES_P1]
 
     def entrenar(self) -> None:
-        """Ajusta el HistGradientBoostingRegressor. El baseline no se entrena."""
+        """Ajusta el modelo del catálogo. El baseline no se entrena."""
         if self.tipo == "candidato":
-            self.modelo = HistGradientBoostingRegressor(random_state=self.semilla)
+            self.modelo = self.crear_modelo()
             self.modelo.fit(self.X_train, self.train["viajes"])
 
     def evaluar(self) -> dict:
@@ -102,24 +103,24 @@ class ExperimentoDemanda(ExperimentoBase):
         ]
 
     def hiperparametros(self) -> dict:
-        """Devuelve el modelo, sus variables e hiperparámetros."""
+        """Devuelve el modelo, sus hiperparámetros y, en los candidatos, sus variables."""
         if self.modelo is None:
-            return {"modelo": "viajes_lag_7"}
-        parametros = self.modelo.get_params()
-        return {
-            "modelo": "HistGradientBoostingRegressor",
-            "variables": ",".join(VARIABLES_P1),
-            **{k: parametros[k] for k in HIPERPARAMETROS_HGB},
-        }
+            return super().hiperparametros()
+        return {**super().hiperparametros(), "variables": ",".join(VARIABLES_P1)}
 
 
 class ExperimentoRiesgo(ExperimentoBase):
     """Predice si una estación estará en riesgo de vaciarse o llenarse en el siguiente bloque (P2)."""
 
     pregunta = "P2"
-    nombres: ClassVar[dict[str, str]] = {
-        "baseline": "P2-baseline-semana-anterior",
-        "candidato": "P2-hgb-balanced",
+    # Solo cerca de 5 % de los bloques están en riesgo, así que se da más peso a esa clase
+    catalogo: ClassVar[dict[str, Modelo]] = {
+        "baseline": Modelo("semana_anterior"),
+        "hgb": Modelo(
+            "gradient_boosting",
+            HistGradientBoostingClassifier,
+            por_defecto={"class_weight": "balanced"},
+        ),
     }
     tipos_confiables = ARBOLES_HGB
 
@@ -132,14 +133,9 @@ class ExperimentoRiesgo(ExperimentoBase):
         self.X_train, self.X_test = self.train[VARIABLES_P2], self.test[VARIABLES_P2]
 
     def entrenar(self) -> None:
-        """Ajusta el HistGradientBoostingClassifier con clases balanceadas.
-
-        Solo cerca de 5 % de los bloques están en riesgo, así que se da más peso a esa clase.
-        """
+        """Ajusta el modelo del catálogo. El baseline no se entrena."""
         if self.tipo == "candidato":
-            self.modelo = HistGradientBoostingClassifier(
-                class_weight="balanced", random_state=self.semilla
-            )
+            self.modelo = self.crear_modelo()
             self.modelo.fit(self.X_train, self.train["riesgo"])
 
     def evaluar(self) -> dict:
@@ -182,26 +178,23 @@ class ExperimentoRiesgo(ExperimentoBase):
 
     def hiperparametros(self) -> dict:
         """Devuelve el modelo, el bloque y el umbral que definen la etiqueta, y sus hiperparámetros."""
-        comunes = {"umbral_riesgo": UMBRAL_RIESGO, "bloque_horas": BLOQUE_HORAS}
-        if self.modelo is None:
-            return {"modelo": "riesgo_semana_anterior", **comunes}
-        parametros = self.modelo.get_params()
-        return {
-            "modelo": "HistGradientBoostingClassifier",
-            "variables": ",".join(VARIABLES_P2),
-            "class_weight": "balanced",
-            **comunes,
-            **{k: parametros[k] for k in HIPERPARAMETROS_HGB},
+        datos = {
+            **super().hiperparametros(),
+            "umbral_riesgo": UMBRAL_RIESGO,
+            "bloque_horas": BLOQUE_HORAS,
         }
+        if self.modelo is not None:
+            datos["variables"] = ",".join(VARIABLES_P2)
+        return datos
 
 
 class ExperimentoGrupos(ExperimentoBase):
     """Agrupa las estaciones con patrones de uso parecidos (P3)."""
 
     pregunta = "P3"
-    nombres: ClassVar[dict[str, str]] = {
-        "baseline": "P3-baseline-municipio",
-        "candidato": "P3-kmeans-perfil-horario",
+    catalogo: ClassVar[dict[str, Modelo]] = {
+        "baseline": Modelo("municipio"),
+        "kmeans": Modelo("kmeans", KMeans, por_defecto={"n_init": 10}, escalar=True),
     }
 
     def preparar(self) -> None:
@@ -215,17 +208,18 @@ class ExperimentoGrupos(ExperimentoBase):
         self.X_escalado = StandardScaler().fit_transform(self.X_train)
 
     def entrenar(self) -> None:
-        """Prueba KMeans con cada k de `K_CANDIDATOS` y se queda con el de mayor silueta."""
+        """Ajusta el modelo con cada k y se queda con el de mayor silueta.
+
+        Prueba los k de `K_CANDIDATOS`, o solo `n_clusters` si el run lo indica.
+        """
         if self.tipo == "baseline":
             return
+        self.k_probados = (
+            [self.params["n_clusters"]] if "n_clusters" in self.params else K_CANDIDATOS
+        )
         ajustes, self.silueta_por_k = {}, {}
-        for k in K_CANDIDATOS:
-            ajustes[k] = Pipeline(
-                [
-                    ("escalado", StandardScaler()),
-                    ("modelo", KMeans(n_clusters=k, n_init=10, random_state=self.semilla)),
-                ]
-            )
+        for k in self.k_probados:
+            ajustes[k] = self.crear_modelo(n_clusters=k)
             grupos = ajustes[k].fit_predict(self.X_train)
             self.silueta_por_k[k] = silhouette_score(self.X_escalado, grupos)
         self.k = max(self.silueta_por_k, key=self.silueta_por_k.get)
@@ -279,39 +273,61 @@ class ExperimentoGrupos(ExperimentoBase):
         return rutas
 
     def hiperparametros(self) -> dict:
-        """Devuelve el modelo, el k elegido y los k probados."""
+        """Devuelve el modelo, sus hiperparámetros, el k elegido y los k probados."""
         if self.modelo is None:
-            return {"modelo": "municipio"}
+            return super().hiperparametros()
         return {
-            "modelo": "KMeans",
+            **super().hiperparametros(),
             "k": self.k,
-            "k_probados": ",".join(map(str, K_CANDIDATOS)),
-            "n_init": 10,
+            "k_probados": ",".join(map(str, self.k_probados)),
         }
 
 
 EXPERIMENTOS = {"P1": ExperimentoDemanda, "P2": ExperimentoRiesgo, "P3": ExperimentoGrupos}
 
 
+def leer_params(texto: str) -> dict:
+    """Convierte `"k=v,..."` en un diccionario de hiperparámetros.
+
+    Los números, booleanos y `None` se leen con su tipo, y el resto queda como texto.
+
+    Args:
+        texto: Hiperparámetros separados por comas. Vacío si no se indica ninguno.
+
+    Returns:
+        Diccionario con los hiperparámetros.
+    """
+    params = {}
+    for par in filter(None, texto.split(",")):
+        clave, valor = (parte.strip() for parte in par.split("=", 1))
+        try:
+            params[clave] = ast.literal_eval(valor)
+        except (ValueError, SyntaxError):
+            params[clave] = valor
+    return params
+
+
 @app.command()
 def main(
-    pregunta: str = typer.Option("todas", help="P1, P2, P3 o todas"),
-    modelo: str = typer.Option("ambos", help="baseline, candidato o ambos"),
+    question: str = typer.Option("todas", help="p1, p2, p3 o todas"),
+    model: str = typer.Option("todos", help="Clave del catálogo de la pregunta o todos"),
+    params: str = typer.Option("", help='Hiperparámetros "k=v,..." que reemplazan al catálogo'),
 ) -> None:
-    """Corre los experimentos pedidos y registra cada uno como un run en MLflow."""
-    if pregunta not in (*EXPERIMENTOS, "todas"):
-        raise typer.BadParameter(f"pregunta debe ser una de {[*EXPERIMENTOS, 'todas']}")
-    if modelo not in ("baseline", "candidato", "ambos"):
-        raise typer.BadParameter("modelo debe ser baseline, candidato o ambos")
+    """Corre los modelos pedidos y registra cada uno como un run en MLflow."""
+    pregunta = question.upper()
+    if pregunta not in (*EXPERIMENTOS, "TODAS"):
+        raise typer.BadParameter(f"question debe ser una de {[*EXPERIMENTOS, 'todas']}")
+    if pregunta == "TODAS" and (model != "todos" or params):
+        raise typer.BadParameter("model y params requieren una sola pregunta")
 
-    preguntas = list(EXPERIMENTOS) if pregunta == "todas" else [pregunta]
-    tipos = ["baseline", "candidato"] if modelo == "ambos" else [modelo]
-    for p in preguntas:
-        for tipo in tipos:
-            experimento = EXPERIMENTOS[p](tipo)
+    for p in EXPERIMENTOS if pregunta == "TODAS" else [pregunta]:
+        clase = EXPERIMENTOS[p]
+        claves = list(clase.catalogo) if model == "todos" else [model]
+        for clave in claves:
+            experimento = clase(clave, leer_params(params))
             run_id, metricas = experimento.ejecutar()
             resumen = "  ".join(f"{k}={v:.3f}" for k, v in metricas.items())
-            logger.success(f"{experimento.nombres[tipo]}: {resumen} (run {run_id})")
+            logger.success(f"{p}-{clave}: {resumen} (run {run_id})")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ solo define sus datos, su modelo y su evaluación.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
@@ -15,6 +16,8 @@ from typing import ClassVar
 from loguru import logger
 import mlflow
 import mlflow.sklearn
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from mi_bici.config import (
     CORTE_PRUEBA,
@@ -28,7 +31,22 @@ from mi_bici.config import (
     TRACKING_URI,
 )
 
-TIPOS = ("baseline", "candidato")
+
+@dataclass(frozen=True)
+class Modelo:
+    """Representa una entrada del catálogo de modelos de una pregunta.
+
+    Args:
+        familia: Familia del modelo, o la regla que sigue el baseline.
+        clase: Estimador de scikit-learn. `None` en el baseline, que es una regla y no se entrena.
+        por_defecto: Hiperparámetros que se usan si el run no indica otros.
+        escalar: Si el estimador va después de un `StandardScaler`, como los modelos lineales.
+    """
+
+    familia: str
+    clase: type | None = None
+    por_defecto: dict = field(default_factory=dict)
+    escalar: bool = False
 
 
 def _sin_fechas(valor):
@@ -90,28 +108,52 @@ def estado_git() -> dict:
 
 
 class ExperimentoBase(ABC):
-    """Representa un run de MLflow para una pregunta y un tipo de modelo.
+    """Representa un run de MLflow para una pregunta y un modelo de su catálogo.
 
-    Cada pregunta hereda de esta clase y define cómo prepara sus datos, entrena, evalúa y qué
-    artefactos guarda. `ejecutar()` hace el resto y registra todo en MLflow siempre igual.
+    Cada pregunta hereda de esta clase, declara su catálogo y define cómo prepara sus datos,
+    entrena, evalúa y qué artefactos guarda. `ejecutar()` hace el resto y registra todo en
+    MLflow siempre igual. Agregar un modelo es agregar una entrada al catálogo.
 
     Args:
-        tipo: `"baseline"` o `"candidato"`.
+        modelo: Clave del catálogo, por ejemplo `"baseline"` o `"hgb"`.
+        params: Hiperparámetros que reemplazan a los del catálogo.
         semilla: Semilla para que el run sea reproducible.
     """
 
     pregunta: str
-    nombres: dict[str, str]  # nombre descriptivo del run para cada tipo
+    catalogo: ClassVar[dict[str, Modelo]]
     # Tipos internos del modelo que skops (formato de MLflow) debe aceptar. Son seguros porque
     # el modelo lo genera este mismo código
     tipos_confiables: ClassVar[tuple[str, ...]] = ()
 
-    def __init__(self, tipo: str = "candidato", semilla: int = SEMILLA):
-        if tipo not in TIPOS:
-            raise ValueError(f"tipo debe ser uno de {TIPOS}")
-        self.tipo = tipo
+    def __init__(
+        self, modelo: str = "baseline", params: dict | None = None, semilla: int = SEMILLA
+    ):
+        if modelo not in self.catalogo:
+            raise ValueError(f"modelo debe ser uno de {list(self.catalogo)}")
+        self.clave = modelo
+        self.entrada = self.catalogo[modelo]
+        self.params = {**self.entrada.por_defecto, **(params or {})}
+        self.tipo = "baseline" if self.entrada.clase is None else "candidato"
         self.semilla = semilla
         self.modelo = None  # estimador de scikit-learn. El baseline es una regla y no tiene
+
+    def crear_modelo(self, **extra):
+        """Crea el estimador del catálogo con la semilla y los hiperparámetros del run.
+
+        Args:
+            **extra: Hiperparámetros que se fijan solo en esta llamada, como el k de P3.
+
+        Returns:
+            El estimador sin entrenar, dentro de un `Pipeline` si la entrada pide escalar.
+        """
+        params = {**self.params, **extra}
+        if "random_state" in self.entrada.clase().get_params():
+            params["random_state"] = self.semilla
+        estimador = self.entrada.clase(**params)
+        if self.entrada.escalar:
+            return Pipeline([("escalado", StandardScaler()), ("modelo", estimador)])
+        return estimador
 
     @abstractmethod
     def preparar(self) -> None:
@@ -145,9 +187,16 @@ class ExperimentoBase(ABC):
             Rutas de los archivos que se registran como artefactos.
         """
 
-    @abstractmethod
     def hiperparametros(self) -> dict:
-        """Devuelve el nombre del modelo y sus hiperparámetros para registrarlos."""
+        """Devuelve la clave del catálogo, la familia y los hiperparámetros del estimador.
+
+        Cada pregunta puede agregar los suyos llamando a este método.
+        """
+        datos = {"modelo": self.clave, "familia": self.entrada.familia}
+        if self.modelo is not None:
+            estimador = self.modelo[-1] if isinstance(self.modelo, Pipeline) else self.modelo
+            datos |= {"clase": type(estimador).__name__, **estimador.get_params()}
+        return datos
 
     def parametros(self) -> dict:
         """Reúne todo lo necesario para reproducir el run.
@@ -178,7 +227,7 @@ class ExperimentoBase(ABC):
 
         mlflow.set_tracking_uri(TRACKING_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)
-        with mlflow.start_run(run_name=self.nombres[self.tipo]) as run:
+        with mlflow.start_run(run_name=f"{self.pregunta}-{self.clave}") as run:
             mlflow.set_tags(
                 {"equipo": EQUIPO, "pregunta": self.pregunta, "tipo": self.tipo, **estado_git()}
             )

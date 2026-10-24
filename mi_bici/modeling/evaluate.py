@@ -1,6 +1,7 @@
 """Calcula las métricas estándar de cada tipo de tarea.
 
-Todas devuelven un diccionario con el conjunto en el nombre de cada métrica (`test_` o `train_`).
+Todas devuelven un diccionario con el conjunto en el nombre de cada métrica (`val_`, `test_` o
+`train_`).
 """
 
 import numpy as np
@@ -18,49 +19,52 @@ from sklearn.metrics import (
 )
 
 
-def metricas_regresion(y, pred) -> dict:
+def metricas_regresion(y, pred, prefijo: str = "test") -> dict:
     """Calcula las métricas de regresión de P1.
 
     El MAE se lee en viajes, que es lo que el operador entiende. No se usa MAPE porque hay días
     con cero viajes.
 
     Args:
-        y: Valores reales del conjunto de prueba.
+        y: Valores reales del conjunto evaluado.
         pred: Valores predichos.
+        prefijo: Conjunto evaluado, `"val"` o `"test"`.
 
     Returns:
-        `test_mae`, `test_rmse` y `test_r2`.
+        `<prefijo>_mae`, `<prefijo>_rmse` y `<prefijo>_r2`.
     """
     return {
-        "test_mae": mean_absolute_error(y, pred),
-        "test_rmse": float(np.sqrt(mean_squared_error(y, pred))),
-        "test_r2": r2_score(y, pred),
+        f"{prefijo}_mae": mean_absolute_error(y, pred),
+        f"{prefijo}_rmse": float(np.sqrt(mean_squared_error(y, pred))),
+        f"{prefijo}_r2": r2_score(y, pred),
     }
 
 
-def metricas_clasificacion(y, pred, puntaje) -> dict:
+def metricas_clasificacion(y, pred, puntaje, prefijo: str = "test") -> dict:
     """Calcula las métricas de clasificación de P2.
 
     Con pocos bloques en riesgo, el recall dice cuántos se detectan y la precisión cuántas visitas
     del camión serían en vano. La precisión promedio resume ambas sin fijar un umbral.
 
     Args:
-        y: Etiquetas reales del conjunto de prueba.
+        y: Etiquetas reales del conjunto evaluado.
         pred: Etiquetas predichas.
         puntaje: Probabilidad o puntaje de la clase positiva.
+        prefijo: Conjunto evaluado, `"val"` o `"test"`.
 
     Returns:
-        `test_recall`, `test_precision`, `test_f1` y `test_average_precision`.
+        `<prefijo>_recall`, `<prefijo>_precision`, `<prefijo>_f1` y
+        `<prefijo>_average_precision`.
     """
     return {
-        "test_recall": recall_score(y, pred, zero_division=0),
-        "test_precision": precision_score(y, pred, zero_division=0),
-        "test_f1": f1_score(y, pred, zero_division=0),
-        "test_average_precision": average_precision_score(y, puntaje),
+        f"{prefijo}_recall": recall_score(y, pred, zero_division=0),
+        f"{prefijo}_precision": precision_score(y, pred, zero_division=0),
+        f"{prefijo}_f1": f1_score(y, pred, zero_division=0),
+        f"{prefijo}_average_precision": average_precision_score(y, puntaje),
     }
 
 
-def metricas_clustering(X, grupos) -> dict:
+def metricas_clustering(X, grupos, prefijo: str = "train") -> dict:
     """Calcula las métricas de clustering de P3.
 
     Sin etiquetas reales, se mide qué tan compactos y separados quedan los grupos. En la silueta y
@@ -69,12 +73,13 @@ def metricas_clustering(X, grupos) -> dict:
     Args:
         X: Variables escaladas de las estaciones.
         grupos: Grupo asignado a cada estación.
+        prefijo: Conjunto evaluado. En P3 es `"train"`, porque no hay prueba.
 
     Returns:
-        `train_silhouette`, `train_davies_bouldin` y `train_calinski_harabasz`.
+        `<prefijo>_silhouette`, `<prefijo>_davies_bouldin` y `<prefijo>_calinski_harabasz`.
     """
     return {
-        "train_silhouette": silhouette_score(X, grupos),
-        "train_davies_bouldin": davies_bouldin_score(X, grupos),
-        "train_calinski_harabasz": calinski_harabasz_score(X, grupos),
+        f"{prefijo}_silhouette": silhouette_score(X, grupos),
+        f"{prefijo}_davies_bouldin": davies_bouldin_score(X, grupos),
+        f"{prefijo}_calinski_harabasz": calinski_harabasz_score(X, grupos),
     }

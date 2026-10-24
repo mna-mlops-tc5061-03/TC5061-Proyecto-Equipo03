@@ -1,5 +1,7 @@
 name: mi-bici-equipo-3
 
+python_env: python_env.yaml
+
 entry_points:
-    load:
+    ingest:
         command: "python -m mi_bici.dataset"

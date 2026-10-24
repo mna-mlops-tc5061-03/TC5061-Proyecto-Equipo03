@@ -44,7 +44,7 @@ warnings.filterwarnings("ignore", message="Hint: Inferred schema contains intege
 ARBOLES_HGB = ("sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",)
 
 # Archivos de configuración que se guardan en cada run, en config/
-ARCHIVOS_CONFIGURACION = ("mi_bici/config.py", "MLproject", "python_env.yaml")
+ARCHIVOS_CONFIGURACION = ("mi_bici/config.py", "MLproject", "python_env.yaml", "requirements.txt")
 
 
 @dataclass(frozen=True)
@@ -255,7 +255,8 @@ class ExperimentoBase(ABC):
         `entrenamiento_segundos`, para comparar el costo de los modelos.
 
         Los artefactos quedan en subcarpetas: `plots/` (gráficas), `data/` (manifiesto y tablas
-        agregadas), `config/` (parámetros resueltos y archivos de configuración) y `model/`.
+        agregadas) y `config/` (parámetros resueltos y archivos de configuración). El modelo queda
+        ligado al run como logged model de MLflow.
 
         Returns:
             El Run ID y las métricas del run.

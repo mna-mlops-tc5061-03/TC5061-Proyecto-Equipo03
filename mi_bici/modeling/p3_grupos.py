@@ -1,4 +1,4 @@
-"""Experimento de P3: grupos de estaciones con patrones de uso parecidos."""
+"""Define el experimento de P3: grupos de estaciones con patrones de uso parecidos."""
 
 from pathlib import Path
 from typing import ClassVar

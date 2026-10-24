@@ -8,7 +8,6 @@ python -m mi_bici.modeling.train --question p2 --model hgb --params "learning_ra
 """
 
 import ast
-import warnings
 
 from loguru import logger
 import typer
@@ -16,10 +15,6 @@ import typer
 from mi_bici.modeling.p1_demanda import ExperimentoDemanda
 from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo
 from mi_bici.modeling.p3_grupos import ExperimentoGrupos
-
-# Las variables enteras (rezagos, hora, día) no tienen faltantes, así que el aviso de MLflow
-# sobre columnas enteras en la firma del modelo no aplica
-warnings.filterwarnings("ignore", message="Hint: Inferred schema contains integer")
 
 app = typer.Typer()
 

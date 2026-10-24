@@ -1,4 +1,4 @@
-"""Experimento de P2: estaciones en riesgo de quedarse sin bicis o sin anclajes."""
+"""Define el experimento de P2: estaciones en riesgo de quedarse sin bicis o sin anclajes."""
 
 from pathlib import Path
 from typing import ClassVar

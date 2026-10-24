@@ -1,4 +1,4 @@
-"""Experimento de P1: viajes que saldrán de cada estación al día siguiente."""
+"""Define el experimento de P1: viajes que saldrán de cada estación al día siguiente."""
 
 from pathlib import Path
 from typing import ClassVar

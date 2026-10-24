@@ -174,6 +174,16 @@ EQUIPO = "equipo03"
 EXPERIMENT_NAME = f"mibici-{EQUIPO}"
 TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
 
+# Model Registry: un modelo registrado por pregunta. El alias champion marca la versión en
+# producción y challenger la siguiente mejor
+MODELOS_REGISTRO = {
+    "P1": f"mibici-{EQUIPO}-p1-demanda",
+    "P2": f"mibici-{EQUIPO}-p2-riesgo",
+    "P3": f"mibici-{EQUIPO}-p3-grupos",
+}
+ALIAS_PRODUCCION = "champion"
+ALIAS_RESPALDO = "challenger"
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:

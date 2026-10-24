@@ -66,6 +66,12 @@ train:
 	$(PYTHON_INTERPRETER) -m mi_bici.modeling.train
 
 
+## Registra el mejor modelo de cada pregunta con el alias champion
+.PHONY: registry
+registry:
+	$(PYTHON_INTERPRETER) -m mi_bici.modeling.registry
+
+
 ## Make dataset
 .PHONY: data
 data: requirements

@@ -11,3 +11,10 @@ class TestMLproject:
         assert proyecto.env_type == "python_env"
         assert proyecto.env_config_path.endswith("python_env.yaml")
         assert proyecto.get_entry_point("ingest").command == "python -m mi_bici.dataset"
+
+    def test_entrada_train_tiene_parametros_con_valor_por_defecto(self):
+        """Verifica que la entrada train recibe question, model y params con valor por defecto."""
+        entrada = load_project(str(PROJ_ROOT)).get_entry_point("train")
+
+        assert set(entrada.parameters) == {"question", "model", "params"}
+        assert all(p.default is not None for p in entrada.parameters.values())

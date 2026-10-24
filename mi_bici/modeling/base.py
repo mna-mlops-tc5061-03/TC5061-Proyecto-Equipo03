@@ -33,6 +33,9 @@ from mi_bici.config import (
     TRACKING_URI,
 )
 
+# Tipos internos de los árboles de HistGradientBoosting que skops debe aceptar al guardar
+ARBOLES_HGB = ("sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",)
+
 
 @dataclass(frozen=True)
 class Modelo:

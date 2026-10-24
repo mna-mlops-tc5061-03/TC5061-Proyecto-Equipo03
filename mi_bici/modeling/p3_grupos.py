@@ -1,0 +1,112 @@
+"""Experimento de P3: grupos de estaciones con patrones de uso parecidos."""
+
+from pathlib import Path
+from typing import ClassVar
+
+import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import StandardScaler
+
+from mi_bici import plots
+from mi_bici.config import K_CANDIDATOS
+from mi_bici.dataset import load_processed_stations, load_processed_travels
+from mi_bici.features import VARIABLES_PERFIL_USO, perfil_estacion
+from mi_bici.modeling.base import ExperimentoBase, Modelo
+from mi_bici.modeling.evaluate import metricas_clustering
+
+
+class ExperimentoGrupos(ExperimentoBase):
+    """Agrupa las estaciones con patrones de uso parecidos (P3)."""
+
+    pregunta = "P3"
+    catalogo: ClassVar[dict[str, Modelo]] = {
+        "baseline": Modelo("municipio"),
+        "kmeans": Modelo("kmeans", KMeans, por_defecto={"n_init": 10}, escalar=True),
+    }
+
+    def preparar(self) -> None:
+        """Construye el perfil de uso de cada estación con el periodo de entrenamiento."""
+        self.perfil = perfil_estacion(load_processed_travels(), load_processed_stations())
+        municipio = self.perfil["nombre"].str.extract(r"\((\w+)-", expand=False)
+        # Una estación sin prefijo en el nombre queda en su propio grupo en lugar de NaN
+        self.perfil["municipio"] = municipio.fillna("SIN")
+        self.train = self.perfil
+        self.X_train = self.perfil[VARIABLES_PERFIL_USO]
+        # Mismo espacio escalado para medir baseline y candidato con la misma vara
+        self.X_escalado = StandardScaler().fit_transform(self.X_train)
+
+    def entrenar(self, datos) -> None:
+        """Ajusta el modelo con cada k y se queda con el de mayor silueta.
+
+        Prueba los k de `K_CANDIDATOS`, o solo `n_clusters` si el run lo indica.
+        """
+        if self.tipo == "baseline":
+            return
+        self.k_probados = (
+            [self.params["n_clusters"]] if "n_clusters" in self.params else K_CANDIDATOS
+        )
+        ajustes, self.silueta_por_k = {}, {}
+        for k in self.k_probados:
+            ajustes[k] = self.crear_modelo(n_clusters=k)
+            grupos = ajustes[k].fit_predict(datos[VARIABLES_PERFIL_USO])
+            self.silueta_por_k[k] = silhouette_score(self.X_escalado, grupos)
+        self.k = max(self.silueta_por_k, key=self.silueta_por_k.get)
+        self.modelo = ajustes[self.k]
+
+    def evaluar(self, datos, prefijo: str) -> dict:
+        """Asigna los grupos y mide su separación. El baseline agrupa por municipio.
+
+        Returns:
+            `<prefijo>_silhouette`, `<prefijo>_davies_bouldin` y `<prefijo>_calinski_harabasz`.
+        """
+        if self.modelo is None:
+            self.perfil["grupo"] = datos["municipio"]
+        else:
+            self.perfil["grupo"] = self.modelo.predict(datos[VARIABLES_PERFIL_USO])
+        return metricas_clustering(self.X_escalado, self.perfil["grupo"], prefijo)
+
+    def artefactos(self, carpeta: Path) -> list[Path]:
+        """Guarda el mapa, el perfil horario, el grupo de cada estación y el resumen por grupo.
+
+        El resumen incluye el % de usuarias y la edad mediana promedio de cada grupo, solo para
+        describirlos. No hay datos de viajes individuales.
+
+        Args:
+            carpeta: Carpeta temporal del run.
+
+        Returns:
+            Las rutas de las gráficas y tablas.
+        """
+        estaciones = carpeta / "grupos_estaciones.csv"
+        self.perfil[["estacion_id", "nombre", "latitud", "longitud", "grupo"]].to_csv(
+            estaciones, index=False
+        )
+        resumen = carpeta / "resumen_grupos.csv"
+        self.perfil.groupby("grupo").agg(
+            estaciones=("estacion_id", "count"),
+            pct_usuarias=("pct_usuarias", "mean"),
+            edad_mediana=("edad_mediana", "mean"),
+            viajes_por_dia_log=("viajes_por_dia_log", "mean"),
+        ).round(3).to_csv(resumen)
+        rutas = [
+            plots.mapa_grupos(self.perfil, "grupo", carpeta / "mapa_grupos.png"),
+            plots.perfil_horario(self.perfil, "grupo", carpeta / "perfil_horario.png"),
+            estaciones,
+            resumen,
+        ]
+        if self.modelo is not None:
+            silueta = carpeta / "silueta_por_k.csv"
+            pd.Series(self.silueta_por_k, name="silueta").rename_axis("k").to_csv(silueta)
+            rutas.append(silueta)
+        return rutas
+
+    def hiperparametros(self) -> dict:
+        """Devuelve el modelo, sus hiperparámetros, el k elegido y los k probados."""
+        if self.modelo is None:
+            return super().hiperparametros()
+        return {
+            **super().hiperparametros(),
+            "k": self.k,
+            "k_probados": ",".join(map(str, self.k_probados)),
+        }

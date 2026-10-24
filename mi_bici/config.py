@@ -158,6 +158,15 @@ VARIABLES_P2 = [
     "capacidad",
 ]
 
+# Columnas que crea features.py y que leen los experimentos: la fecha que separa los conjuntos,
+# el objetivo y la que el baseline usa como predicción
+COLUMNA_FECHA_P1 = "fecha"
+OBJETIVO_P1 = "viajes"
+BASELINE_P1 = "viajes_lag_7"
+COLUMNA_FECHA_P2 = "bloque"
+OBJETIVO_P2 = "riesgo"
+BASELINE_P2 = "riesgo_semana_anterior"
+
 SEMILLA = 42
 
 # MLflow: local por defecto. Para un servidor compartido basta con MLFLOW_TRACKING_URI en .env

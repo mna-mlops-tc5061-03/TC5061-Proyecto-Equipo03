@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from typing import ClassVar
+import warnings
 
 from loguru import logger
 import mlflow
@@ -32,6 +33,13 @@ from mi_bici.config import (
     SEMILLA,
     TRACKING_URI,
 )
+
+# Las variables enteras (rezagos, hora, día) no tienen faltantes, así que el aviso de MLflow
+# sobre columnas enteras en la firma del modelo no aplica
+warnings.filterwarnings("ignore", message="Hint: Inferred schema contains integer")
+
+# Tipos internos de los árboles de HistGradientBoosting que skops debe aceptar al guardar
+ARBOLES_HGB = ("sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",)
 
 
 @dataclass(frozen=True)

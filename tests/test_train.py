@@ -1,6 +1,7 @@
 import pytest
 
-from mi_bici.modeling.train import EXPERIMENTOS, ExperimentoRiesgo, leer_params
+from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo
+from mi_bici.modeling.train import EXPERIMENTOS, leer_params
 
 
 class TestTrain:

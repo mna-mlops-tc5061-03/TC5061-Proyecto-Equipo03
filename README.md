@@ -54,7 +54,7 @@ make lint              # revisa el formato del código
 ```
 
 Para correr un solo modelo: `python -m mi_bici.modeling.train --question p2 --model hgb`. Cada pregunta
-tiene un catálogo de modelos en `train.py`, y `--params "k=v,..."` cambia sus hiperparámetros.
+tiene su catálogo de modelos en su archivo (`p1_demanda.py`, `p2_riesgo.py` y `p3_grupos.py`), y `--params "k=v,..."` cambia sus hiperparámetros.
 
 ## Configuración
 
@@ -107,7 +107,10 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   └── modeling/
 │       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow
 │       ├── evaluate.py      # métricas por tipo de tarea (test_*, train_*)
-│       └── train.py         # catálogo de modelos de P1, P2 y P3 y la CLI de entrenamiento
+│       ├── p1_demanda.py    # P1: catálogo de modelos, variables, evaluación y artefactos
+│       ├── p2_riesgo.py     # P2: lo mismo para el riesgo por bloque
+│       ├── p3_grupos.py     # P3: lo mismo para los grupos de estaciones
+│       └── train.py         # CLI de entrenamiento: una pregunta y un modelo por run
 ├── data/                    # raw, interim, processed y external. No se versiona
 ├── models/                  # modelos serializados. No se versionan
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb

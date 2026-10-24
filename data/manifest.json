@@ -1,9 +1,8 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "estaciones": {
     "file": "estaciones.parquet",
-    "md5": "f4e659df2c6a11f0b57c301adb1b0283",
-    "size_bytes": 26863,
+    "content_hash": "8baa2c7165d3bd59aafc916510087c88936e08825027613e7a1df28750666840",
     "num_rows": 484,
     "columns": [
       "estacion_id",
@@ -15,9 +14,8 @@
   },
   "viajes": {
     "directory": "viajes",
-    "md5": "b6f9796299d27627f4c0ad6ae44464e0",
+    "content_hash": "aeb7e687dcd4d1ec04ae44a84b1ff3e4c559ea933964d9d65ac387825c1907b1",
     "total_files": 12,
-    "total_size_bytes": 30978184,
     "total_rows": 4332379,
     "columns": [
       "genero",
@@ -27,6 +25,68 @@
       "destino_id",
       "nacimiento",
       "duracion_min"
+    ],
+    "files": [
+      {
+        "partition": "anio=2025/mes=10",
+        "content_hash": "95e9654740e02f5a948066c2baa6a3933e7b72e04bb9e25c8c3e4adfd648ad6c",
+        "num_rows": 408587
+      },
+      {
+        "partition": "anio=2025/mes=11",
+        "content_hash": "7d5b93c749b3800428060d6c6a69b5667a5b8c4d04e44dac3a0d9e6a5195e274",
+        "num_rows": 370139
+      },
+      {
+        "partition": "anio=2025/mes=12",
+        "content_hash": "cae2380236ed94f3bfaf261fe1cec4b21a96188fb788b6fddbac6e741b47c25c",
+        "num_rows": 326582
+      },
+      {
+        "partition": "anio=2026/mes=01",
+        "content_hash": "9afa07f931a0a9c32ef2f84f45d650897b981eb62b8aa62c5c933bb1871aafd2",
+        "num_rows": 346875
+      },
+      {
+        "partition": "anio=2026/mes=02",
+        "content_hash": "26f632f16528c22af74bc02157be68ced9ee6a572208c82c63568c14a70db5b7",
+        "num_rows": 319087
+      },
+      {
+        "partition": "anio=2026/mes=03",
+        "content_hash": "0c46932ef4da623abc12db065e1b2e62a67646e02c6f9947de6f3b91d725e9f2",
+        "num_rows": 364303
+      },
+      {
+        "partition": "anio=2026/mes=04",
+        "content_hash": "1ddf8dd3a48398fa10365747550ee9696e47280aa065fcd8e41195f1022d6fff",
+        "num_rows": 340616
+      },
+      {
+        "partition": "anio=2026/mes=05",
+        "content_hash": "d5ee95667e26c0613ca9d45b31ed1703dd0eb4a21377b7331557ec25b4316097",
+        "num_rows": 303706
+      },
+      {
+        "partition": "anio=2026/mes=06",
+        "content_hash": "21c80cc59c98559583999c91b6d719052f80061cd732ae57003db5e6cb947488",
+        "num_rows": 338363
+      },
+      {
+        "partition": "anio=2026/mes=07",
+        "content_hash": "2a573b39e99255ed70002649512c9d122cbbdc1fe8cc313299b815d8bead0354",
+        "num_rows": 370345
+      },
+      {
+        "partition": "anio=2026/mes=08",
+        "content_hash": "d15dc1337ddbaf45de8a95dfd717e28a2d432763230c85fe31359a4ed812baf2",
+        "num_rows": 375254
+      },
+      {
+        "partition": "anio=2026/mes=09",
+        "content_hash": "45a3c5baead41642654068e07411f9c4ea55d8e85a751daaa2ef0ff42a1f4a3d",
+        "num_rows": 468522
+      }
     ]
   }
 }

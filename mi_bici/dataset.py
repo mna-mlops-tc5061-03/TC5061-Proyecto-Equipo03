@@ -185,10 +185,12 @@ def load_data_stations(download_if_missing: bool = False) -> pd.DataFrame:
             raise FileNotFoundError(f"Archivo de estaciones no encontrado en: {RAW_DATA_DIR}")
 
     logger.info(f"Cargando estaciones desde: {file_path.name}")
+    # round_trip convierte las coordenadas con redondeo exacto. El lector rápido por defecto puede
+    # dar otro último dígito según la computadora, y con eso cambiaría la versión de los datos
     try:
-        return pd.read_csv(file_path, encoding="utf-8")
+        return pd.read_csv(file_path, encoding="utf-8", float_precision="round_trip")
     except UnicodeDecodeError:
-        return pd.read_csv(file_path, encoding="iso-8859-1")
+        return pd.read_csv(file_path, encoding="iso-8859-1", float_precision="round_trip")
 
 
 def load_data_from_url(

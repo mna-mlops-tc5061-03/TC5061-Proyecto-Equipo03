@@ -73,6 +73,19 @@ class TestManifest:
         )
         assert manifiesto(primera, monkeypatch) == manifiesto(segunda, monkeypatch)
 
+    def test_coordenadas_con_redondeo_exacto(self, tmp_path, monkeypatch):
+        """Verifica que las coordenadas de estaciones se leen igual que float(), en cualquier computadora."""
+        textos = ["20.691846603895982", "-103.36805841104507"]
+        (tmp_path / "nomenclatura_2026_09.csv").write_text(
+            f'"id","name","latitude","longitude","dpcapacity"\n"2","A","{textos[0]}","{textos[1]}","15"\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(dataset, "RAW_DATA_DIR", tmp_path)
+
+        fila = dataset.load_data_stations().iloc[0]
+
+        assert (fila["latitude"], fila["longitude"]) == tuple(float(t) for t in textos)
+
     def test_manifiesto_sin_md5_ni_tamanos(self, tmp_path, monkeypatch):
         """Verifica que el manifiesto solo guarda lo que depende del contenido, con la partición de cada archivo."""
         ingesta(tmp_path, "snappy", semilla=1)

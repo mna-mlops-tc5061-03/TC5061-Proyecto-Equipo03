@@ -21,11 +21,13 @@ from sklearn.preprocessing import StandardScaler
 
 from mi_bici.config import (
     CORTE_PRUEBA,
+    CORTE_VALIDACION,
     EQUIPO,
     EXPERIMENT_NAME,
     FECHA_FIN,
     FECHA_INICIO,
     MANIFEST_FILE,
+    METRICA_SELECCION,
     PROJ_ROOT,
     SEMILLA,
     TRACKING_URI,
@@ -122,6 +124,8 @@ class ExperimentoBase(ABC):
 
     pregunta: str
     catalogo: ClassVar[dict[str, Modelo]]
+    # Columna de fecha con que se separa la validación. P3 no tiene y se mide con todo el periodo
+    columna_fecha: ClassVar[str | None] = None
     # Tipos internos del modelo que skops (formato de MLflow) debe aceptar. Son seguros porque
     # el modelo lo genera este mismo código
     tipos_confiables: ClassVar[tuple[str, ...]] = ()
@@ -137,6 +141,7 @@ class ExperimentoBase(ABC):
         self.tipo = "baseline" if self.entrada.clase is None else "candidato"
         self.semilla = semilla
         self.modelo = None  # estimador de scikit-learn. El baseline es una regla y no tiene
+        self.test = None  # conjunto de prueba. P3 no tiene
 
     def crear_modelo(self, **extra):
         """Crea el estimador del catálogo con la semilla y los hiperparámetros del run.
@@ -159,21 +164,30 @@ class ExperimentoBase(ABC):
     def preparar(self) -> None:
         """Lee los datos procesados, construye las variables y separa entrenamiento y prueba.
 
-        Debe dejar `self.X_train` con las variables de entrenamiento. Sus primeras filas se
+        Debe dejar `self.train`, `self.test` (o `None`) y `self.X_train` con las variables de
+        entrenamiento. Sus primeras filas se
         guardan como ejemplo del modelo, así que no debe traer columnas de viajes individuales
         (como `genero` o `nacimiento`), solo variables agregadas.
         """
 
     @abstractmethod
-    def entrenar(self) -> None:
-        """Ajusta el modelo candidato. El baseline no se entrena."""
+    def entrenar(self, datos) -> None:
+        """Ajusta el modelo candidato con `datos`. El baseline no se entrena.
+
+        Args:
+            datos: Filas de entrenamiento, antes de la validación o de la prueba.
+        """
 
     @abstractmethod
-    def evaluar(self) -> dict:
-        """Evalúa el modelo o la regla del baseline.
+    def evaluar(self, datos, prefijo: str) -> dict:
+        """Evalúa el modelo o la regla del baseline con `datos`.
+
+        Args:
+            datos: Filas que se evalúan.
+            prefijo: Conjunto evaluado: `"val"`, `"test"` o `"train"`.
 
         Returns:
-            Métricas con el conjunto en el nombre, por ejemplo `test_mae` o `train_silhouette`.
+            Métricas con el conjunto en el nombre, por ejemplo `val_mae` o `train_silhouette`.
         """
 
     @abstractmethod
@@ -202,13 +216,15 @@ class ExperimentoBase(ABC):
         """Reúne todo lo necesario para reproducir el run.
 
         Returns:
-            Rango de fechas, corte de prueba, versión de los datos, semilla, filas de
-            entrenamiento, modelo e hiperparámetros.
+            Rango de fechas, cortes de validación y prueba, métrica de selección, versión de los
+            datos, semilla, filas de entrenamiento, modelo e hiperparámetros.
         """
         return {
             "fecha_inicio": FECHA_INICIO,
             "fecha_fin": FECHA_FIN,
+            "corte_validacion": CORTE_VALIDACION,
             "corte_prueba": CORTE_PRUEBA,
+            "metrica_seleccion": METRICA_SELECCION[self.pregunta][0],
             "data_version": version_datos(),
             "semilla": self.semilla,
             "filas_train": len(self.X_train),
@@ -218,12 +234,24 @@ class ExperimentoBase(ABC):
     def ejecutar(self) -> tuple[str, dict]:
         """Corre el experimento completo y lo registra en MLflow.
 
+        Primero ajusta con los meses antes de `CORTE_VALIDACION` y mide en validación, que es con
+        lo que se comparan los modelos. Después reentrena con todo el periodo de entrenamiento y
+        mide en prueba, que no se usa para elegir nada.
+
         Returns:
             El Run ID y las métricas del run.
         """
         self.preparar()
-        self.entrenar()
-        metricas = self.evaluar()
+        metricas = {}
+        if self.columna_fecha:
+            antes = self.train[self.columna_fecha] < CORTE_VALIDACION
+            self.entrenar(self.train[antes])
+            metricas |= self.evaluar(self.train[~antes], "val")
+        self.entrenar(self.train)
+        if self.test is None:
+            metricas |= self.evaluar(self.train, "train")
+        else:
+            metricas |= self.evaluar(self.test, "test")
 
         mlflow.set_tracking_uri(TRACKING_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)

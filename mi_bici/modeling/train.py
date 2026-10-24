@@ -62,31 +62,32 @@ class ExperimentoDemanda(ExperimentoBase):
         "hgb": Modelo("gradient_boosting", HistGradientBoostingRegressor),
     }
     tipos_confiables = ARBOLES_HGB
+    columna_fecha = "fecha"
 
     def preparar(self) -> None:
         """Construye la demanda diaria y la separa en entrenamiento y prueba por fecha."""
         demanda = demanda_diaria(load_processed_travels(), load_processed_stations())
         prueba = demanda["fecha"] >= CORTE_PRUEBA
         self.train, self.test = demanda[~prueba], demanda[prueba]
-        self.X_train, self.X_test = self.train[VARIABLES_P1], self.test[VARIABLES_P1]
+        self.X_train = self.train[VARIABLES_P1]
 
-    def entrenar(self) -> None:
-        """Ajusta el modelo del catálogo. El baseline no se entrena."""
+    def entrenar(self, datos) -> None:
+        """Ajusta el modelo del catálogo con `datos`. El baseline no se entrena."""
         if self.tipo == "candidato":
             self.modelo = self.crear_modelo()
-            self.modelo.fit(self.X_train, self.train["viajes"])
+            self.modelo.fit(datos[VARIABLES_P1], datos["viajes"])
 
-    def evaluar(self) -> dict:
-        """Evalúa en prueba. El baseline predice los viajes del mismo día de la semana anterior.
+    def evaluar(self, datos, prefijo: str) -> dict:
+        """Evalúa con `datos`. El baseline predice los viajes del mismo día de la semana anterior.
 
         Returns:
-            `test_mae`, `test_rmse` y `test_r2`.
+            `<prefijo>_mae`, `<prefijo>_rmse` y `<prefijo>_r2`.
         """
         if self.modelo is None:
-            self.pred = self.test["viajes_lag_7"].to_numpy()
+            self.pred = datos["viajes_lag_7"].to_numpy()
         else:
-            self.pred = self.modelo.predict(self.X_test)
-        return metricas_regresion(self.test["viajes"], self.pred)
+            self.pred = self.modelo.predict(datos[VARIABLES_P1])
+        return metricas_regresion(datos["viajes"], self.pred, prefijo)
 
     def artefactos(self, carpeta: Path) -> list[Path]:
         """Guarda la gráfica de viajes reales contra predichos.
@@ -123,6 +124,7 @@ class ExperimentoRiesgo(ExperimentoBase):
         ),
     }
     tipos_confiables = ARBOLES_HGB
+    columna_fecha = "bloque"
 
     def preparar(self) -> None:
         """Construye el flujo por bloque y la etiqueta de riesgo, y separa por fecha."""
@@ -130,30 +132,31 @@ class ExperimentoRiesgo(ExperimentoBase):
         riesgo = etiqueta_riesgo(flujo, UMBRAL_RIESGO)
         prueba = riesgo["bloque"] >= CORTE_PRUEBA
         self.train, self.test = riesgo[~prueba], riesgo[prueba]
-        self.X_train, self.X_test = self.train[VARIABLES_P2], self.test[VARIABLES_P2]
+        self.X_train = self.train[VARIABLES_P2]
 
-    def entrenar(self) -> None:
-        """Ajusta el modelo del catálogo. El baseline no se entrena."""
+    def entrenar(self, datos) -> None:
+        """Ajusta el modelo del catálogo con `datos`. El baseline no se entrena."""
         if self.tipo == "candidato":
             self.modelo = self.crear_modelo()
-            self.modelo.fit(self.X_train, self.train["riesgo"])
+            self.modelo.fit(datos[VARIABLES_P2], datos["riesgo"])
 
-    def evaluar(self) -> dict:
-        """Evalúa en prueba. El baseline repite el riesgo del mismo bloque la semana anterior.
+    def evaluar(self, datos, prefijo: str) -> dict:
+        """Evalúa con `datos`. El baseline repite el riesgo del mismo bloque la semana anterior.
 
         Returns:
-            `test_recall`, `test_precision`, `test_f1`, `test_average_precision` y la proporción
-            de bloques en riesgo (`train_tasa_riesgo`, `test_tasa_riesgo`).
+            `<prefijo>_recall`, `<prefijo>_precision`, `<prefijo>_f1`,
+            `<prefijo>_average_precision` y la proporción de bloques en riesgo
+            (`train_tasa_riesgo`, `<prefijo>_tasa_riesgo`).
         """
         if self.modelo is None:
-            self.pred = self.puntaje = self.test["riesgo_semana_anterior"].to_numpy()
+            self.pred = self.puntaje = datos["riesgo_semana_anterior"].to_numpy()
         else:
-            self.pred = self.modelo.predict(self.X_test)
-            self.puntaje = self.modelo.predict_proba(self.X_test)[:, 1]
-        metricas = metricas_clasificacion(self.test["riesgo"], self.pred, self.puntaje)
+            self.pred = self.modelo.predict(datos[VARIABLES_P2])
+            self.puntaje = self.modelo.predict_proba(datos[VARIABLES_P2])[:, 1]
+        metricas = metricas_clasificacion(datos["riesgo"], self.pred, self.puntaje, prefijo)
         # La tasa real de riesgo justifica el umbral y el uso de average precision
         metricas["train_tasa_riesgo"] = self.train["riesgo"].mean()
-        metricas["test_tasa_riesgo"] = self.test["riesgo"].mean()
+        metricas[f"{prefijo}_tasa_riesgo"] = datos["riesgo"].mean()
         return metricas
 
     def artefactos(self, carpeta: Path) -> list[Path]:
@@ -203,11 +206,12 @@ class ExperimentoGrupos(ExperimentoBase):
         municipio = self.perfil["nombre"].str.extract(r"\((\w+)-", expand=False)
         # Una estación sin prefijo en el nombre queda en su propio grupo en lugar de NaN
         self.perfil["municipio"] = municipio.fillna("SIN")
+        self.train = self.perfil
         self.X_train = self.perfil[VARIABLES_PERFIL_USO]
         # Mismo espacio escalado para medir baseline y candidato con la misma vara
         self.X_escalado = StandardScaler().fit_transform(self.X_train)
 
-    def entrenar(self) -> None:
+    def entrenar(self, datos) -> None:
         """Ajusta el modelo con cada k y se queda con el de mayor silueta.
 
         Prueba los k de `K_CANDIDATOS`, o solo `n_clusters` si el run lo indica.
@@ -220,22 +224,22 @@ class ExperimentoGrupos(ExperimentoBase):
         ajustes, self.silueta_por_k = {}, {}
         for k in self.k_probados:
             ajustes[k] = self.crear_modelo(n_clusters=k)
-            grupos = ajustes[k].fit_predict(self.X_train)
+            grupos = ajustes[k].fit_predict(datos[VARIABLES_PERFIL_USO])
             self.silueta_por_k[k] = silhouette_score(self.X_escalado, grupos)
         self.k = max(self.silueta_por_k, key=self.silueta_por_k.get)
         self.modelo = ajustes[self.k]
 
-    def evaluar(self) -> dict:
+    def evaluar(self, datos, prefijo: str) -> dict:
         """Asigna los grupos y mide su separación. El baseline agrupa por municipio.
 
         Returns:
-            `train_silhouette`, `train_davies_bouldin` y `train_calinski_harabasz`.
+            `<prefijo>_silhouette`, `<prefijo>_davies_bouldin` y `<prefijo>_calinski_harabasz`.
         """
         if self.modelo is None:
-            self.perfil["grupo"] = self.perfil["municipio"]
+            self.perfil["grupo"] = datos["municipio"]
         else:
-            self.perfil["grupo"] = self.modelo.predict(self.X_train)
-        return metricas_clustering(self.X_escalado, self.perfil["grupo"])
+            self.perfil["grupo"] = self.modelo.predict(datos[VARIABLES_PERFIL_USO])
+        return metricas_clustering(self.X_escalado, self.perfil["grupo"], prefijo)
 
     def artefactos(self, carpeta: Path) -> list[Path]:
         """Guarda el mapa, el perfil horario, el grupo de cada estación y el resumen por grupo.

@@ -69,8 +69,8 @@ Cada run se registra igual, desde `mi_bici/modeling/base.py`:
 
 | Qué | Contenido |
 |---|---|
-| Parámetros | `fecha_inicio`, `fecha_fin`, `corte_prueba`, `data_version`, `semilla`, `filas_train`, modelo e hiperparámetros |
-| Métricas | Con el conjunto en el nombre: `test_mae`, `test_recall`, `train_silhouette`… |
+| Parámetros | `fecha_inicio`, `fecha_fin`, `corte_validacion`, `corte_prueba`, `metrica_seleccion`, `data_version`, `semilla`, `filas_train`, modelo e hiperparámetros |
+| Métricas | Con el conjunto en el nombre: `val_mae`, `test_mae`, `test_recall`, `train_silhouette`… |
 | Etiquetas | `equipo`, `pregunta`, `tipo` (baseline o candidato), `git_commit` y `git_dirty` |
 | Artefactos | Gráficas o tablas de cada pregunta, y el modelo en los candidatos |
 

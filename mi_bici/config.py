@@ -90,6 +90,18 @@ URL_NOMENCLATURA = URL_STATIONS
 FECHA_INICIO = "2025-10-01"
 FECHA_FIN = "2026-09-30"
 CORTE_PRUEBA = "2026-08-01"
+# Validación: los dos meses antes de la prueba. Los modelos se comparan y eligen con ella, y la
+# prueba solo confirma el resultado
+CORTE_VALIDACION = "2026-06-01"
+
+# Métrica con que se elige el modelo de cada pregunta y si mayor es mejor. Un candidato se acepta
+# si le gana al baseline en esta métrica en validación y también en prueba. P3 no tiene prueba y
+# se mide con el periodo de entrenamiento
+METRICA_SELECCION = {
+    "P1": ("val_mae", False),
+    "P2": ("val_average_precision", True),
+    "P3": ("train_silhouette", True),
+}
 
 # Limpieza: viajes de menos de 2 min que salen y regresan a la misma estación son errores al
 # sacar la bici. Más de 12 h se considera irregular en los términos de MiBici

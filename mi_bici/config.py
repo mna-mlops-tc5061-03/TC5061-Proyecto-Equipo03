@@ -209,9 +209,7 @@ GRID_P1 = {
     ],
 }
 
-HIPERPARAMETROS_GRIDS = {
-    "P1": GRID_P1
-}
+HIPERPARAMETROS_GRIDS = {"P1": GRID_P1}
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135

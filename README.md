@@ -47,14 +47,16 @@ Con el entorno activado (`source .venv/bin/activate`):
 
 ```bash
 make data              # descarga, limpia y versiona los datos de MiBici
-make train             # registra en MLflow un baseline y un candidato de P1, P2 y P3 (6 runs)
+make train             # registra en MLflow el baseline y candidatos por defecto de P1, P2 y P3
+make train-grid        # corre la cuadrícula de hiperparámetros para P1
+make registry          # registra el mejor modelo de cada pregunta con el alias champion
 mlflow ui --port 5001  # ver los runs en http://127.0.0.1:5001 (en macOS AirPlay ocupa el 5000)
 make test              # corre las pruebas de tests/
 make lint              # revisa el formato del código
 ```
 
-Para correr un solo modelo: `python -m mi_bici.modeling.train --question p2 --model hgb`. Cada pregunta
-tiene su catálogo de modelos en su archivo (`p1_demanda.py`, `p2_riesgo.py` y `p3_grupos.py`), y `--params "k=v,..."` cambia sus hiperparámetros.
+Para correr un solo modelo: `python -m mi_bici.modeling.train --question p1 --model rf`. Cada pregunta
+tiene su catálogo de modelos en su archivo (`p1_demanda.py`, `p2_riesgo.py` y `p3_grupos.py`), `--params "k=v,..."` cambia sus hiperparámetros y `--grid` corre su cuadrícula de experimentación.
 
 ## Configuración
 

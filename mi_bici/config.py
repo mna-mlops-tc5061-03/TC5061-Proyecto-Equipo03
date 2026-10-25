@@ -184,33 +184,6 @@ MODELOS_REGISTRO = {
 ALIAS_PRODUCCION = "champion"
 ALIAS_RESPALDO = "challenger"
 
-#####################################################################
-#  Cuadriculas de hiperparametros por defecto para experimentos
-#####################################################################
-
-GRID_P1 = {
-    "hgb": [
-        {"learning_rate": 0.05, "max_iter": 100},
-        {"learning_rate": 0.1, "max_iter": 100},
-        {"learning_rate": 0.05, "max_iter": 200},
-        {"learning_rate": 0.1, "max_iter": 200},
-    ],
-    "rf": [
-        {"n_estimators": 50, "max_depth": 10},
-        {"n_estimators": 100, "max_depth": 10},
-        {"n_estimators": 50, "max_depth": 20},
-        {"n_estimators": 100, "max_depth": 20},
-    ],
-    "ridge": [
-        {"alpha": 0.1},
-        {"alpha": 1.0},
-        {"alpha": 10.0},
-        {"alpha": 100.0},
-    ],
-}
-
-HIPERPARAMETROS_GRIDS = {"P1": GRID_P1}
-
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:

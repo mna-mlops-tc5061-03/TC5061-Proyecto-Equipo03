@@ -67,12 +67,6 @@ train:
 	$(PYTHON_INTERPRETER) -m mi_bici.modeling.train $(ARGS)
 
 
-## Corre la cuadrícula completa de hiperparámetros para P1
-.PHONY: train-grid
-train-grid:
-	$(PYTHON_INTERPRETER) -m mi_bici.modeling.train --question p1 --grid
-
-
 ## Registra el mejor modelo de cada pregunta con el alias champion
 .PHONY: registry
 registry:

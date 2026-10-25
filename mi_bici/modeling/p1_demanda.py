@@ -30,11 +30,13 @@ class ExperimentoDemanda(ExperimentoBase):
             "random_forest",
             RandomForestRegressor,
             por_defecto={"n_estimators": 100, "max_depth": 15, "n_jobs": -1},
+            cuadricula={"n_estimators": [50, 100], "max_depth": [10, 20]},
         ),
         "ridge": Modelo(
             "lineal",
             Ridge,
             por_defecto={"alpha": 1.0},
+            cuadricula={"alpha": [0.1, 1.0, 10.0, 100.0]},
             escalar=True,
         ),
         "hgb": Modelo(

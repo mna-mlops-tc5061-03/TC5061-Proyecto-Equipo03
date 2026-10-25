@@ -46,10 +46,12 @@ class TestTrain:
             ExperimentoRiesgo("xgboost")
 
     def test_catalogo_p1_contiene_modelos_requeridos(self):
-        """Verifica que P1 contenga baseline, hgb, rf y ridge en su catálogo."""
+        """Verifica que P1 contenga baseline, hgb, rf y ridge en su catálogo con cuadrículas."""
         catalogo = ExperimentoDemanda.catalogo
         for clave in ("baseline", "hgb", "rf", "ridge"):
             assert clave in catalogo
+        assert set(catalogo["rf"].cuadricula) == {"n_estimators", "max_depth"}
+        assert set(catalogo["ridge"].cuadricula) == {"alpha"}
 
     def test_ridge_utiliza_standard_scaler(self):
         """Verifica que el modelo ridge construya un Pipeline con StandardScaler y Ridge."""

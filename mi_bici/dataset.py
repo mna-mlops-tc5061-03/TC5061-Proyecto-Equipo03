@@ -5,6 +5,7 @@ import re
 import shutil
 
 from loguru import logger
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import requests
@@ -184,10 +185,12 @@ def load_data_stations(download_if_missing: bool = False) -> pd.DataFrame:
             raise FileNotFoundError(f"Archivo de estaciones no encontrado en: {RAW_DATA_DIR}")
 
     logger.info(f"Cargando estaciones desde: {file_path.name}")
+    # round_trip convierte las coordenadas con redondeo exacto. El lector rápido por defecto puede
+    # dar otro último dígito según la computadora, y con eso cambiaría la versión de los datos
     try:
-        return pd.read_csv(file_path, encoding="utf-8")
+        return pd.read_csv(file_path, encoding="utf-8", float_precision="round_trip")
     except UnicodeDecodeError:
-        return pd.read_csv(file_path, encoding="iso-8859-1")
+        return pd.read_csv(file_path, encoding="iso-8859-1", float_precision="round_trip")
 
 
 def load_data_from_url(
@@ -417,8 +420,29 @@ def compute_file_md5(file_path: Path) -> str:
     return hasher.hexdigest()
 
 
+def compute_row_hashes(df: pd.DataFrame) -> np.ndarray:
+    """Calcula un hash por fila con `pd.util.hash_pandas_object`, sin el índice."""
+    return pd.util.hash_pandas_object(df, index=False).to_numpy()
+
+
+def compute_content_hash(row_hashes: np.ndarray) -> str:
+    """Resume el contenido de una tabla en un SHA-256, sin importar el orden de sus filas.
+
+    Ordena los hashes de las filas antes de combinarlos, así que el resultado depende solo de los
+    valores y tipos de las filas. A diferencia del MD5 del archivo, no cambia con la versión o
+    compilación de pyarrow ni con el sistema operativo que escribió el Parquet.
+
+    Args:
+        row_hashes: Hashes de las filas, de `compute_row_hashes`. Pueden venir de varios archivos.
+
+    Returns:
+        El SHA-256 del contenido en hexadecimal.
+    """
+    return hashlib.sha256(np.sort(row_hashes).astype("<u8").tobytes()).hexdigest()
+
+
 def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> dict:
-    """Calcula el hash MD5 y metadatos de un archivo o carpeta parquet y crea un JSON de metadatos asociado."""
+    """Calcula el hash MD5, el hash del contenido y metadatos de un archivo o carpeta parquet y crea un JSON de metadatos asociado."""
     if not target.exists():
         raise FileNotFoundError(f"Ruta objetivo no encontrada: {target}")
 
@@ -433,6 +457,7 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             "name": target.stem,
             "file_name": target.name,
             "md5": md5_hash,
+            "content_hash": compute_content_hash(compute_row_hashes(pd.read_parquet(target))),
             "size_bytes": size_bytes,
             "num_rows": num_rows,
             "columns": columns,
@@ -455,6 +480,7 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
         total_rows = 0
         columns = []
         combined_hasher = hashlib.md5()
+        all_row_hashes = []
 
         for pfile in parquet_files:
             rel_path = str(pfile.relative_to(target))
@@ -464,6 +490,8 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             f_rows = pf.metadata.num_rows
             if not columns:
                 columns = pf.schema.names
+            row_hashes = compute_row_hashes(pd.read_parquet(pfile))
+            all_row_hashes.append(row_hashes)
 
             total_size += f_size
             total_rows += f_rows
@@ -472,7 +500,10 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             files_info.append(
                 {
                     "path": rel_path,
+                    # El nombre del archivo es aleatorio en cada ingesta; la partición no cambia
+                    "partition": str(pfile.parent.relative_to(target)),
                     "md5": f_md5,
+                    "content_hash": compute_content_hash(row_hashes),
                     "size_bytes": f_size,
                     "num_rows": f_rows,
                 }
@@ -482,6 +513,7 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
             "name": target.name,
             "directory": target.name,
             "md5": combined_hasher.hexdigest(),
+            "content_hash": compute_content_hash(np.concatenate(all_row_hashes)),
             "total_files": len(parquet_files),
             "total_size_bytes": total_size,
             "total_rows": total_rows,
@@ -499,26 +531,38 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
 
 
 def generate_manifest(manifest_path: Path = MANIFEST_FILE) -> dict:
-    """Genera o actualiza el archivo manifest.json consolidando metadatos de estaciones y viajes."""
+    """Genera o actualiza el archivo manifest.json consolidando metadatos de estaciones y viajes.
+
+    Solo guarda lo que depende del contenido de los datos (hash del contenido, filas y columnas),
+    no el MD5 ni el tamaño de los archivos, que cambian con el entorno aunque los datos sean los
+    mismos. Así, con los mismos datos, el manifiesto y `data_version` salen iguales en cualquier
+    computadora.
+    """
     estaciones_meta = generate_parquet_metadata(ESTACIONES_FILE, ESTACIONES_METADATA_FILE)
     viajes_meta = generate_parquet_metadata(VIAJES_DIR, VIAJES_METADATA_FILE)
 
     manifest = {
-        "version": "1.0",
+        "version": "2.0",
         "estaciones": {
             "file": estaciones_meta["file_name"],
-            "md5": estaciones_meta["md5"],
-            "size_bytes": estaciones_meta["size_bytes"],
+            "content_hash": estaciones_meta["content_hash"],
             "num_rows": estaciones_meta["num_rows"],
             "columns": estaciones_meta["columns"],
         },
         "viajes": {
             "directory": viajes_meta["directory"],
-            "md5": viajes_meta["md5"],
+            "content_hash": viajes_meta["content_hash"],
             "total_files": viajes_meta["total_files"],
-            "total_size_bytes": viajes_meta["total_size_bytes"],
             "total_rows": viajes_meta["total_rows"],
             "columns": viajes_meta["columns"],
+            "files": [
+                {
+                    "partition": f["partition"],
+                    "content_hash": f["content_hash"],
+                    "num_rows": f["num_rows"],
+                }
+                for f in viajes_meta["files"]
+            ],
         },
     }
 

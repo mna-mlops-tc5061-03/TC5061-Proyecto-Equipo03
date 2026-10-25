@@ -75,9 +75,9 @@ Cada run se registra igual, desde `mi_bici/modeling/base.py`:
 | Artefactos | `plots/` (gráficas), `data/` (manifiesto y tablas agregadas, con `log_input` de la tabla de entrenamiento), `config/` (parámetros resueltos, `config.py`, `MLproject`, `python_env.yaml` y `requirements.txt`). En los candidatos, el modelo con firma queda ligado al run como logged model (`models:/m-…`) |
 
 `data_version` son los primeros 12 caracteres del hash de `data/manifest.json` (sin su fecha de
-creación). Los viajes dan el mismo hash en cualquier computadora. El de estaciones puede cambiar
-según el entorno aunque las filas y el tamaño sean iguales: si después de `make data` `git status`
-marca `data/manifest.json`, restáuralo con `git restore data/manifest.json` antes de `make train`.
+creación). El manifiesto guarda, para cada tabla, un hash de su contenido (los valores de sus
+filas, sin importar el orden) en lugar del hash de los bytes del Parquet, que cambia según el
+entorno. Así, con los mismos datos, `make data` deja el mismo manifiesto en cualquier computadora.
 
 ## Buenas prácticas aplicadas
 

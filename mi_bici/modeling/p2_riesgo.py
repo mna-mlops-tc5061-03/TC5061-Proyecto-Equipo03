@@ -32,6 +32,7 @@ class ExperimentoRiesgo(ExperimentoBase):
             "gradient_boosting",
             HistGradientBoostingClassifier,
             por_defecto={"class_weight": "balanced"},
+            cuadricula={"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63, 127]},
         ),
     }
     tipos_confiables = ARBOLES_HGB

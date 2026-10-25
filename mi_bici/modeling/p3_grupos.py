@@ -22,7 +22,13 @@ class ExperimentoGrupos(ExperimentoBase):
     pregunta = "P3"
     catalogo: ClassVar[dict[str, Modelo]] = {
         "baseline": Modelo("municipio"),
-        "kmeans": Modelo("kmeans", KMeans, por_defecto={"n_init": 10}, escalar=True),
+        "kmeans": Modelo(
+            "kmeans",
+            KMeans,
+            por_defecto={"n_init": 10},
+            escalar=True,
+            cuadricula={"n_clusters": K_CANDIDATOS},
+        ),
     }
 
     def preparar(self) -> None:

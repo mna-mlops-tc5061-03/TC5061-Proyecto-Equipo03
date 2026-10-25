@@ -18,3 +18,10 @@ class TestMLproject:
 
         assert set(entrada.parameters) == {"question", "model", "params"}
         assert all(p.default is not None for p in entrada.parameters.values())
+
+    def test_entrada_search_tiene_parametros_con_valor_por_defecto(self):
+        """Verifica que la entrada search recibe question, model y grid con valor por defecto."""
+        entrada = load_project(str(PROJ_ROOT)).get_entry_point("search")
+
+        assert set(entrada.parameters) == {"question", "model", "grid"}
+        assert all(p.default is not None for p in entrada.parameters.values())

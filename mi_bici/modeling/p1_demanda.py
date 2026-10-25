@@ -25,7 +25,11 @@ class ExperimentoDemanda(ExperimentoBase):
     pregunta = "P1"
     catalogo: ClassVar[dict[str, Modelo]] = {
         "baseline": Modelo("semana_anterior"),
-        "hgb": Modelo("gradient_boosting", HistGradientBoostingRegressor),
+        "hgb": Modelo(
+            "gradient_boosting",
+            HistGradientBoostingRegressor,
+            cuadricula={"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63, 127]},
+        ),
     }
     tipos_confiables = ARBOLES_HGB
     columna_fecha = COLUMNA_FECHA_P1

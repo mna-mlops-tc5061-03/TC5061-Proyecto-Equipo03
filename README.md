@@ -183,3 +183,19 @@ def metricas_regresion(y, pred) -> dict:
 | Gerardo González Martínez | A01840096 | Configuración, registro común en MLflow, variables y experimento base |
 | Miguel Ángel Ramírez Castillo | A01840045 | Ingesta reproducible y administración del repositorio |
 | Sebastián Estrada García | A00805402 | ML Canvas, diagramas, referencias, evidencia de MLflow y documento de la propuesta |
+
+## Servidor de tracking de MLflow
+
+El Model Registry necesita un backend con base de datos, así que levantamos un servidor local con SQLite:
+
+    mlflow server --backend-store-uri sqlite:///mlflow.db --artifacts-destination ./mlartifacts --port 5001
+
+Luego copia las variables de entorno:
+
+    cp .env.example .env
+
+La UI queda en http://127.0.0.1:5001.
+
+**¿Por qué el puerto 5001?** En macOS, el receptor de AirPlay ocupa el puerto 5000 (el default de MLflow), así que usamos 5001 para evitar el conflicto.
+
+`mlflow.db`, `mlruns/`, `mlartifacts/` y `.env` están en `.gitignore` y no se suben al repo.

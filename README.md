@@ -37,7 +37,6 @@ python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
-
 `requirements.txt` fija la versión exacta de cada dependencia, así que el entorno es el mismo en
 cualquier computadora.
 
@@ -62,8 +61,7 @@ Todo lo que define una ejecución vive en `mi_bici/config.py`: rutas, URLs de lo
 corte de prueba, semilla, umbrales y el experimento de MLflow (`mibici-equipo03`). Ningún otro
 módulo escribe estos valores a mano.
 
-MLflow guarda los runs en `mlflow.db` local. Para usar un servidor compartido basta con definir
-`MLFLOW_TRACKING_URI` en un archivo `.env`, que no se versiona.
+MLflow guarda los runs en un servidor local con SQLite (ver [Servidor de tracking de MLflow](#servidor-de-tracking-de-mlflow)). Su dirección se define en `MLFLOW_TRACKING_URI` dentro de un archivo `.env`, que no se versiona.
 
 Cada run se registra igual, desde `mi_bici/modeling/base.py`:
 
@@ -78,6 +76,26 @@ Cada run se registra igual, desde `mi_bici/modeling/base.py`:
 creación). El manifiesto guarda, para cada tabla, un hash de su contenido (los valores de sus
 filas, sin importar el orden) en lugar del hash de los bytes del Parquet, que cambia según el
 entorno. Así, con los mismos datos, `make data` deja el mismo manifiesto en cualquier computadora.
+
+### Servidor de tracking de MLflow
+
+El Model Registry necesita un backend con base de datos, así que levantamos un servidor local con SQLite:
+
+```bash
+mlflow server --backend-store-uri sqlite:///mlflow.db --artifacts-destination ./mlartifacts --port 5001
+```
+
+Luego copia las variables de entorno:
+
+```bash
+cp .env.example .env
+```
+
+La UI queda en http://127.0.0.1:5001.
+
+**¿Por qué el puerto 5001?** En macOS, el receptor de AirPlay ocupa el puerto 5000 (el default de MLflow), así que usamos 5001 para evitar el conflicto.
+
+`mlflow.db`, `mlruns/`, `mlartifacts/` y `.env` están en `.gitignore` y no se suben al repo.
 
 ## Buenas prácticas aplicadas
 
@@ -184,18 +202,4 @@ def metricas_regresion(y, pred) -> dict:
 | Miguel Ángel Ramírez Castillo | A01840045 | Ingesta reproducible y administración del repositorio |
 | Sebastián Estrada García | A00805402 | ML Canvas, diagramas, referencias, evidencia de MLflow y documento de la propuesta |
 
-## Servidor de tracking de MLflow
 
-El Model Registry necesita un backend con base de datos, así que levantamos un servidor local con SQLite:
-
-    mlflow server --backend-store-uri sqlite:///mlflow.db --artifacts-destination ./mlartifacts --port 5001
-
-Luego copia las variables de entorno:
-
-    cp .env.example .env
-
-La UI queda en http://127.0.0.1:5001.
-
-**¿Por qué el puerto 5001?** En macOS, el receptor de AirPlay ocupa el puerto 5000 (el default de MLflow), así que usamos 5001 para evitar el conflicto.
-
-`mlflow.db`, `mlruns/`, `mlartifacts/` y `.env` están en `.gitignore` y no se suben al repo.

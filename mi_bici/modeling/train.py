@@ -16,6 +16,8 @@ from mi_bici.modeling.p1_demanda import ExperimentoDemanda
 from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo
 from mi_bici.modeling.p3_grupos import ExperimentoGrupos
 
+from mi_bici.config import HIPERPARAMETROS_GRIDS
+
 app = typer.Typer()
 
 EXPERIMENTOS = {"P1": ExperimentoDemanda, "P2": ExperimentoRiesgo, "P3": ExperimentoGrupos}
@@ -47,22 +49,37 @@ def main(
     question: str = typer.Option("todas", help="p1, p2, p3 o todas"),
     model: str = typer.Option("todos", help="Clave del catálogo de la pregunta o todos"),
     params: str = typer.Option("", help='Hiperparámetros "k=v,..." que reemplazan al catálogo'),
+    grid: bool = typer.Option(False, "--grid", help="Corre la cuadrícula de hiperparámetros para el modelo o pregunta"),
 ) -> None:
     """Corre los modelos pedidos y registra cada uno como un run en MLflow."""
     pregunta = question.upper()
     if pregunta not in (*EXPERIMENTOS, "TODAS"):
         raise typer.BadParameter(f"question debe ser una de {[*EXPERIMENTOS, 'todas']}")
-    if pregunta == "TODAS" and (model != "todos" or params):
-        raise typer.BadParameter("model y params requieren una sola pregunta")
-
+    if pregunta == "TODAS" and (model != "todos" or params or grid):
+        raise typer.BadParameter("model, params y grid requieren una sola pregunta")
+    if params and grid:
+        raise typer.BadParameter("params y grid son mutuamente excluyentes")
     for p in EXPERIMENTOS if pregunta == "TODAS" else [pregunta]:
         clase = EXPERIMENTOS[p]
         claves = list(clase.catalogo) if model == "todos" else [model]
         for clave in claves:
-            experimento = clase(clave, leer_params(params))
-            run_id, metricas = experimento.ejecutar()
-            resumen = "  ".join(f"{k}={v:.3f}" for k, v in metricas.items())
-            logger.success(f"{p}-{clave}: {resumen} (run {run_id})")
+            # Determinamos la lista de combinaciones de hiperparámetros
+            if grid:
+                grid_pregunta = HIPERPARAMETROS_GRIDS.get(p, {})
+                if clave not in grid_pregunta:
+                    logger.warning(f"No hay cuadrícula definida para {p}-{clave}, se usará por defecto.")
+                    lista_params = [{}]
+                else:
+                    lista_params = grid_pregunta[clave]
+            else:
+                lista_params = [leer_params(params)]
+            for config_params in lista_params:
+                experimento = clase(clave, config_params)
+                if grid:
+                    experimento.etapa = "search"
+                run_id, metricas = experimento.ejecutar()
+                resumen = "  ".join(f"{k}={v:.3f}" for k, v in metricas.items())
+                logger.success(f"{p}-{clave} ({config_params or 'default'}): {resumen} (run {run_id})")
 
 
 if __name__ == "__main__":

@@ -11,3 +11,9 @@ entry_points:
             model: {type: string, default: baseline}
             params: {type: string, default: ""}
         command: "python -m mi_bici.modeling.train --question {question} --model {model} --params {params}"
+    search:
+        parameters:
+            question: {type: string, default: p1}
+            model: {type: string, default: hgb}
+            grid: {type: string, default: ""}
+        command: "python -m mi_bici.modeling.search --question {question} --model {model} --grid {grid}"

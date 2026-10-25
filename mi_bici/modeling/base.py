@@ -18,6 +18,7 @@ import warnings
 
 from loguru import logger
 import mlflow
+from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
 import mlflow.sklearn
 import pandas as pd
@@ -62,6 +63,7 @@ class Modelo:
         escalar: Si el estimador va después de un `StandardScaler`, como los modelos lineales.
         cuadricula: Valores por hiperparámetro que prueba la búsqueda, por ejemplo
             `{"learning_rate": [0.05, 0.1]}`.
+        serializacion: Formato para guardar el modelo (`"skops"` o `"cloudpickle"`).
     """
 
     familia: str
@@ -69,6 +71,7 @@ class Modelo:
     por_defecto: dict = field(default_factory=dict)
     escalar: bool = False
     cuadricula: dict = field(default_factory=dict)
+    serializacion: str = "skops"
 
 
 def _sin_fechas(valor):
@@ -330,13 +333,26 @@ class ExperimentoBase(ABC):
 
             if self.modelo is not None:
                 ejemplo = self.X_train.head(3)
-                mlflow.sklearn.log_model(
-                    self.modelo,
-                    name="model",
-                    signature=infer_signature(ejemplo, self.modelo.predict(ejemplo)),
-                    input_example=ejemplo,
-                    skops_trusted_types=list(self.tipos_confiables),
-                )
+                kwargs_modelo = {
+                    "name": "model",
+                    "signature": infer_signature(ejemplo, self.modelo.predict(ejemplo)),
+                    "input_example": ejemplo,
+                }
+                if self.entrada.serializacion == "cloudpickle":
+                    mlflow.sklearn.log_model(
+                        self.modelo, **kwargs_modelo, serialization_format="cloudpickle"
+                    )
+                else:
+                    try:
+                        mlflow.sklearn.log_model(
+                            self.modelo,
+                            **kwargs_modelo,
+                            skops_trusted_types=list(self.tipos_confiables),
+                        )
+                    except MlflowException:
+                        mlflow.sklearn.log_model(
+                            self.modelo, **kwargs_modelo, serialization_format="cloudpickle"
+                        )
         return run.info.run_id, metricas
 
     def buscar(self, cuadricula: dict | None = None) -> tuple[str, dict]:

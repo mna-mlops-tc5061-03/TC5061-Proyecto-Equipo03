@@ -3,7 +3,10 @@
 from pathlib import Path
 from typing import ClassVar
 
-from sklearn.ensemble import HistGradientBoostingClassifier
+import numpy as np
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import precision_recall_curve
 
 from mi_bici import plots
 from mi_bici.config import (
@@ -12,12 +15,14 @@ from mi_bici.config import (
     COLUMNA_FECHA_P2,
     CORTE_PRUEBA,
     OBJETIVO_P2,
+    SEMILLA,
+    UMBRAL_DECISION_P2,
     UMBRAL_RIESGO,
     VARIABLES_P2,
 )
 from mi_bici.dataset import load_processed_stations, load_processed_travels
 from mi_bici.features import etiqueta_riesgo, flujo_por_bloque
-from mi_bici.modeling.base import ARBOLES_HGB, ExperimentoBase, Modelo
+from mi_bici.modeling.base import ARBOLES_HGB, ARBOLES_RF, ExperimentoBase, Modelo
 from mi_bici.modeling.evaluate import metricas_clasificacion
 
 
@@ -34,9 +39,33 @@ class ExperimentoRiesgo(ExperimentoBase):
             por_defecto={"class_weight": "balanced"},
             cuadricula={"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63, 127]},
         ),
+        "logreg": Modelo(
+            "lineal",
+            LogisticRegression,
+            por_defecto={"class_weight": "balanced", "max_iter": 1000},
+            cuadricula={"C": [0.01, 0.1, 1.0, 10.0]},
+            escalar=True,
+        ),
+        "rf": Modelo(
+            "random_forest",
+            RandomForestClassifier,
+            por_defecto={
+                "class_weight": "balanced",
+                "n_estimators": 100,
+                "max_depth": 15,
+                "n_jobs": -1,
+            },
+            cuadricula={"n_estimators": [50, 100], "max_depth": [10, 20]},
+        ),
     }
-    tipos_confiables = ARBOLES_HGB
+    tipos_confiables = (*ARBOLES_HGB, *ARBOLES_RF)
     columna_fecha = COLUMNA_FECHA_P2
+
+    def __init__(
+        self, modelo: str = "baseline", params: dict | None = None, semilla: int = SEMILLA
+    ):
+        super().__init__(modelo, params, semilla)
+        self.umbral_decision: float = UMBRAL_DECISION_P2
 
     def preparar(self) -> None:
         """Construye el flujo por bloque y la etiqueta de riesgo, y separa por fecha."""
@@ -63,12 +92,29 @@ class ExperimentoRiesgo(ExperimentoBase):
         if self.modelo is None:
             self.pred = self.puntaje = datos[BASELINE_P2].to_numpy()
         else:
-            self.pred = self.modelo.predict(datos[VARIABLES_P2])
             self.puntaje = self.modelo.predict_proba(datos[VARIABLES_P2])[:, 1]
+            if prefijo == "val":
+                precisions, recalls, thresholds = precision_recall_curve(
+                    datos[OBJETIVO_P2], self.puntaje
+                )
+                denominador = precisions[:-1] + recalls[:-1]
+                f1_scores = np.divide(
+                    2 * precisions[:-1] * recalls[:-1],
+                    denominador,
+                    out=np.zeros_like(thresholds),
+                    where=denominador > 0,
+                )
+                if len(f1_scores) > 0 and np.max(f1_scores) > 0:
+                    self.umbral_decision = float(thresholds[np.argmax(f1_scores)])
+                else:
+                    self.umbral_decision = UMBRAL_DECISION_P2
+            self.pred = (self.puntaje >= self.umbral_decision).astype(int)
         metricas = metricas_clasificacion(datos[OBJETIVO_P2], self.pred, self.puntaje, prefijo)
         # La tasa real de riesgo justifica el umbral y el uso de average precision
         metricas["train_tasa_riesgo"] = self.train[OBJETIVO_P2].mean()
         metricas[f"{prefijo}_tasa_riesgo"] = datos[OBJETIVO_P2].mean()
+        if self.modelo is not None:
+            metricas[f"{prefijo}_umbral_decision"] = round(self.umbral_decision, 4)
         return metricas
 
     def artefactos(self, carpeta: Path) -> list[Path]:
@@ -100,4 +146,5 @@ class ExperimentoRiesgo(ExperimentoBase):
         }
         if self.modelo is not None:
             datos["variables"] = ",".join(VARIABLES_P2)
+            datos["umbral_decision"] = round(self.umbral_decision, 4)
         return datos

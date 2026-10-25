@@ -26,7 +26,6 @@ class ExperimentoDemanda(ExperimentoBase):
     pregunta = "P1"
     catalogo: ClassVar[dict[str, Modelo]] = {
         "baseline": Modelo("semana_anterior"),
-        "hgb": Modelo("gradient_boosting", HistGradientBoostingRegressor),
         "rf": Modelo(
             "random_forest",
             RandomForestRegressor,
@@ -37,6 +36,11 @@ class ExperimentoDemanda(ExperimentoBase):
             Ridge,
             por_defecto={"alpha": 1.0},
             escalar=True,
+        ),
+        "hgb": Modelo(
+            "gradient_boosting",
+            HistGradientBoostingRegressor,
+            cuadricula={"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63, 127]},
         ),
     }
     tipos_confiables = (*ARBOLES_HGB, *ARBOLES_RF)

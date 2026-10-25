@@ -22,24 +22,27 @@ app = typer.Typer()
 EXPERIMENTOS = {"P1": ExperimentoDemanda, "P2": ExperimentoRiesgo, "P3": ExperimentoGrupos}
 
 
+def leer_valor(texto: str):
+    """Lee un valor con su tipo: números, booleanos y `None`. El resto queda como texto."""
+    try:
+        return ast.literal_eval(texto)
+    except (ValueError, SyntaxError):
+        return texto
+
+
 def leer_params(texto: str) -> dict:
     """Convierte `"k=v,..."` en un diccionario de hiperparámetros.
-
-    Los números, booleanos y `None` se leen con su tipo, y el resto queda como texto.
 
     Args:
         texto: Hiperparámetros separados por comas. Vacío si no se indica ninguno.
 
     Returns:
-        Diccionario con los hiperparámetros.
+        Diccionario con los hiperparámetros, cada valor con su tipo.
     """
     params = {}
     for par in filter(None, texto.split(",")):
         clave, valor = (parte.strip() for parte in par.split("=", 1))
-        try:
-            params[clave] = ast.literal_eval(valor)
-        except (ValueError, SyntaxError):
-            params[clave] = valor
+        params[clave] = leer_valor(valor)
     return params
 
 

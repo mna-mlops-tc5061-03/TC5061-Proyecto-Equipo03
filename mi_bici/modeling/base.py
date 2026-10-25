@@ -7,6 +7,7 @@ solo define sus datos, su modelo y su evaluación.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import hashlib
+import itertools
 import json
 from pathlib import Path
 import subprocess
@@ -19,6 +20,7 @@ from loguru import logger
 import mlflow
 from mlflow.models import infer_signature
 import mlflow.sklearn
+import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -57,12 +59,15 @@ class Modelo:
         clase: Estimador de scikit-learn. `None` en el baseline, que es una regla y no se entrena.
         por_defecto: Hiperparámetros que se usan si el run no indica otros.
         escalar: Si el estimador va después de un `StandardScaler`, como los modelos lineales.
+        cuadricula: Valores por hiperparámetro que prueba la búsqueda, por ejemplo
+            `{"learning_rate": [0.05, 0.1]}`.
     """
 
     familia: str
     clase: type | None = None
     por_defecto: dict = field(default_factory=dict)
     escalar: bool = False
+    cuadricula: dict = field(default_factory=dict)
 
 
 def _sin_fechas(valor):
@@ -247,6 +252,31 @@ class ExperimentoBase(ABC):
             **self.hiperparametros(),
         }
 
+    def etiquetas(self) -> dict:
+        """Devuelve las etiquetas para filtrar el run en la UI: equipo, pregunta, familia, etapa y git."""
+        return {
+            "equipo": EQUIPO,
+            "question": self.pregunta.lower(),
+            "model_family": self.entrada.familia,
+            "stage_of_work": self.etapa,
+            **estado_git(),
+        }
+
+    def validar(self) -> dict:
+        """Ajusta con los meses antes de `CORTE_VALIDACION` y mide en validación.
+
+        P3 no tiene validación, así que ajusta y mide con todo el periodo de entrenamiento.
+
+        Returns:
+            Las métricas `val_*`, o `train_*` en P3.
+        """
+        if not self.columna_fecha:
+            self.entrenar(self.train)
+            return self.evaluar(self.train, "train")
+        antes = self.train[self.columna_fecha] < CORTE_VALIDACION
+        self.entrenar(self.train[antes])
+        return self.evaluar(self.train[~antes], "val")
+
     def ejecutar(self) -> tuple[str, dict]:
         """Corre el experimento completo y lo registra en MLflow.
 
@@ -263,11 +293,7 @@ class ExperimentoBase(ABC):
             El Run ID y las métricas del run.
         """
         self.preparar()
-        metricas = {}
-        if self.columna_fecha:
-            antes = self.train[self.columna_fecha] < CORTE_VALIDACION
-            self.entrenar(self.train[antes])
-            metricas |= self.evaluar(self.train[~antes], "val")
+        metricas = self.validar() if self.columna_fecha else {}
         inicio = time.perf_counter()
         self.entrenar(self.train)
         metricas["entrenamiento_segundos"] = time.perf_counter() - inicio
@@ -279,15 +305,7 @@ class ExperimentoBase(ABC):
         mlflow.set_tracking_uri(TRACKING_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)
         with mlflow.start_run(run_name=f"{self.pregunta}-{self.clave}") as run:
-            mlflow.set_tags(
-                {
-                    "equipo": EQUIPO,
-                    "question": self.pregunta.lower(),
-                    "model_family": self.entrada.familia,
-                    "stage_of_work": self.etapa,
-                    **estado_git(),
-                }
-            )
+            mlflow.set_tags(self.etiquetas())
             parametros = self.parametros()
             mlflow.log_params(parametros)
             mlflow.log_metrics(metricas)
@@ -319,3 +337,57 @@ class ExperimentoBase(ABC):
                     skops_trusted_types=list(self.tipos_confiables),
                 )
         return run.info.run_id, metricas
+
+    def buscar(self, cuadricula: dict | None = None) -> tuple[str, dict]:
+        """Prueba cada combinación de una cuadrícula como run hijo y deja la mejor en el run padre.
+
+        Los hijos solo se ajustan y se miden en validación (P3, en entrenamiento), así que la
+        prueba no participa en la búsqueda. El padre guarda la tabla de resultados en
+        `data/busqueda.csv` y la mejor combinación en la etiqueta `mejor_params`, con el formato
+        de `--params`, para correrla después como candidato.
+
+        Args:
+            cuadricula: Valores por hiperparámetro. Si no se indica, se usa la del catálogo.
+
+        Returns:
+            El Run ID del padre y la mejor combinación con su métrica de selección.
+
+        Raises:
+            ValueError: Si el modelo es el baseline o no tiene cuadrícula.
+        """
+        cuadricula = cuadricula or self.entrada.cuadricula
+        if self.tipo == "baseline" or not cuadricula:
+            raise ValueError(f"{self.pregunta}-{self.clave} no tiene cuadrícula para buscar")
+        metrica, mayor_es_mejor = METRICA_SELECCION[self.pregunta]
+        fijos = self.params
+        combinaciones = [
+            dict(zip(cuadricula, valores)) for valores in itertools.product(*cuadricula.values())
+        ]
+
+        self.preparar()
+        self.etapa = "search"
+        mlflow.set_tracking_uri(TRACKING_URI)
+        mlflow.set_experiment(EXPERIMENT_NAME)
+        resultados = []
+        with mlflow.start_run(run_name=f"{self.pregunta}-{self.clave}-busqueda") as padre:
+            mlflow.set_tags(self.etiquetas())
+            mlflow.log_params({**self.parametros(), "cuadricula": json.dumps(cuadricula)})
+            for combinacion in combinaciones:
+                self.params = {**fijos, **combinacion}
+                metricas = self.validar()
+                nombre = ",".join(f"{k}={v}" for k, v in combinacion.items())
+                with mlflow.start_run(
+                    run_name=f"{self.pregunta}-{self.clave}-{nombre}", nested=True
+                ):
+                    mlflow.set_tags(self.etiquetas())
+                    mlflow.log_params(self.parametros())
+                    mlflow.log_metrics(metricas)
+                resultados.append({**combinacion, metrica: metricas[metrica]})
+
+            resultados.sort(key=lambda fila: fila[metrica], reverse=mayor_es_mejor)
+            mejor = resultados[0]
+            mlflow.set_tag("mejor_params", ",".join(f"{k}={mejor[k]}" for k in cuadricula))
+            mlflow.log_metric(f"mejor_{metrica}", mejor[metrica])
+            mlflow.log_text(pd.DataFrame(resultados).to_csv(index=False), "data/busqueda.csv")
+        self.params = fijos
+        return padre.info.run_id, mejor

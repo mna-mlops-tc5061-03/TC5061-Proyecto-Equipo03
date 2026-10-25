@@ -132,6 +132,8 @@ FESTIVOS = [
 # de su capacidad
 BLOQUE_HORAS = 3
 UMBRAL_RIESGO = 0.4
+# Umbral de decisión inicial del clasificador en P2 (se calibra en validación con F1)
+UMBRAL_DECISION_P2 = 0.5
 
 # P3: valores de k que se prueban y días mínimos con viajes para que el perfil sea estable
 K_CANDIDATOS = list(range(3, 9))

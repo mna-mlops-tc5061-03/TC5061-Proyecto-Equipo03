@@ -18,7 +18,6 @@ import warnings
 
 from loguru import logger
 import mlflow
-from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
 import mlflow.sklearn
 import pandas as pd
@@ -343,16 +342,11 @@ class ExperimentoBase(ABC):
                         self.modelo, **kwargs_modelo, serialization_format="cloudpickle"
                     )
                 else:
-                    try:
-                        mlflow.sklearn.log_model(
-                            self.modelo,
-                            **kwargs_modelo,
-                            skops_trusted_types=list(self.tipos_confiables),
-                        )
-                    except MlflowException:
-                        mlflow.sklearn.log_model(
-                            self.modelo, **kwargs_modelo, serialization_format="cloudpickle"
-                        )
+                    mlflow.sklearn.log_model(
+                        self.modelo,
+                        **kwargs_modelo,
+                        skops_trusted_types=list(self.tipos_confiables),
+                    )
         return run.info.run_id, metricas
 
     def buscar(self, cuadricula: dict | None = None) -> tuple[str, dict]:

@@ -57,7 +57,6 @@ def main(
         raise typer.BadParameter(f"question debe ser una de {[*EXPERIMENTOS, 'todas']}")
     if pregunta == "TODAS" and (model != "todos" or params):
         raise typer.BadParameter("model y params requieren una sola pregunta")
-
     for p in EXPERIMENTOS if pregunta == "TODAS" else [pregunta]:
         clase = EXPERIMENTOS[p]
         claves = list(clase.catalogo) if model == "todos" else [model]

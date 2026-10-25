@@ -59,11 +59,12 @@ create_environment:
 # PROJECT RULES                                                                 #
 #################################################################################
 
+ARGS ?=
 
 ## Train baselines and candidates and log them to MLflow
 .PHONY: train
 train:
-	$(PYTHON_INTERPRETER) -m mi_bici.modeling.train
+	$(PYTHON_INTERPRETER) -m mi_bici.modeling.train $(ARGS)
 
 
 ## Registra el mejor modelo de cada pregunta con el alias champion

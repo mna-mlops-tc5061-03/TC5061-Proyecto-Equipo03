@@ -42,6 +42,8 @@ from mi_bici.config import (
 # sobre columnas enteras en la firma del modelo no aplica
 warnings.filterwarnings("ignore", message="Hint: Inferred schema contains integer")
 
+# Tipos internos de los árboles de RandomForest que skops debe aceptar al guardar
+ARBOLES_RF = ("sklearn.tree._tree.Tree",)
 # Tipos internos de los árboles de HistGradientBoosting que skops debe aceptar al guardar
 ARBOLES_HGB = ("sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",)
 

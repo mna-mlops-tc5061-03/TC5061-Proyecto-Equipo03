@@ -3,7 +3,8 @@
 from pathlib import Path
 from typing import ClassVar
 
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
+from sklearn.linear_model import Ridge
 
 from mi_bici import plots
 from mi_bici.config import (
@@ -15,7 +16,7 @@ from mi_bici.config import (
 )
 from mi_bici.dataset import load_processed_stations, load_processed_travels
 from mi_bici.features import demanda_diaria
-from mi_bici.modeling.base import ARBOLES_HGB, ExperimentoBase, Modelo
+from mi_bici.modeling.base import ARBOLES_HGB, ARBOLES_RF, ExperimentoBase, Modelo
 from mi_bici.modeling.evaluate import metricas_regresion
 
 
@@ -25,13 +26,26 @@ class ExperimentoDemanda(ExperimentoBase):
     pregunta = "P1"
     catalogo: ClassVar[dict[str, Modelo]] = {
         "baseline": Modelo("semana_anterior"),
+        "rf": Modelo(
+            "random_forest",
+            RandomForestRegressor,
+            por_defecto={"n_estimators": 100, "max_depth": 15, "n_jobs": -1},
+            cuadricula={"n_estimators": [50, 100], "max_depth": [10, 20]},
+        ),
+        "ridge": Modelo(
+            "lineal",
+            Ridge,
+            por_defecto={"alpha": 1.0},
+            cuadricula={"alpha": [0.1, 1.0, 10.0, 100.0]},
+            escalar=True,
+        ),
         "hgb": Modelo(
             "gradient_boosting",
             HistGradientBoostingRegressor,
             cuadricula={"learning_rate": [0.05, 0.1], "max_leaf_nodes": [31, 63, 127]},
         ),
     }
-    tipos_confiables = ARBOLES_HGB
+    tipos_confiables = (*ARBOLES_HGB, *ARBOLES_RF)
     columna_fecha = COLUMNA_FECHA_P1
 
     def preparar(self) -> None:

@@ -42,19 +42,53 @@ cualquier computadora.
 
 ## Ejecución
 
-Con el entorno activado (`source .venv/bin/activate`):
+El proyecto se corre como MLflow Project. Antes, con el entorno activado, se levanta el
+[servidor de tracking](#servidor-de-tracking-de-mlflow) y se carga el `.env` en la terminal,
+porque `mlflow run` toma `MLFLOW_TRACKING_URI` de ahí:
+
+```bash
+source .venv/bin/activate
+set -a && source .env && set +a
+```
+
+Después, desde la raíz del repositorio:
+
+```bash
+mlflow run . -e ingest --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e train -P question=p1 -P model=hgb --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e search -P question=p1 -P model=hgb --experiment-name mibici-equipo03 --env-manager local
+make registry
+```
+
+`--experiment-name` deja cada run en el experimento que usa el código, y `--env-manager local`
+usa el `.venv` activo en lugar de crear otro entorno a partir de `python_env.yaml`.
+
+| Entrada | Parámetros | Qué hace |
+|---|---|---|
+| `ingest` | — | Descarga, limpia y versiona los datos (lo mismo que `make data`) |
+| `train` | `question` (`p1`, `p2` o `p3`), `model` (clave del catálogo, `baseline` por defecto) y `params` (`"k=v,..."`, opcional) | Un run con un modelo: ajusta antes de `corte_validacion`, mide en validación y después en prueba (P3, sin etiquetas, se mide en entrenamiento) |
+| `search` | `question`, `model` (`hgb` por defecto) y `grid` (`"k=v1\|v2,..."`, vacío usa la cuadrícula del catálogo) | Un run padre con un run hijo por combinación, medidos solo en validación. El padre guarda la mejor en la etiqueta `mejor_params` |
+
+Cada pregunta tiene su catálogo de modelos en su archivo:
+
+| Pregunta | Archivo | Modelos |
+|---|---|---|
+| P1 | `p1_demanda.py` | `baseline`, `hgb`, `rf` y `ridge` |
+| P2 | `p2_riesgo.py` | `baseline`, `hgb`, `logreg` y `rf` |
+| P3 | `p3_grupos.py` | `baseline`, `kmeans`, `birch` y `gmm` |
+
+La mejor combinación de una búsqueda se registra como candidato pasándola a `train`, por ejemplo
+`-P params="learning_rate=0.1,max_leaf_nodes=63"`.
+
+Otros comandos:
 
 ```bash
 make data              # descarga, limpia y versiona los datos de MiBici
-make train             # registra en MLflow el baseline y candidatos por defecto de P1, P2 y P3
+make train             # registra el baseline y los candidatos de P1, P2 y P3 sin mlflow run
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
-mlflow ui --port 5001  # ver los runs en http://127.0.0.1:5001 (en macOS AirPlay ocupa el 5000)
 make test              # corre las pruebas de tests/
 make lint              # revisa el formato del código
 ```
-
-Para correr un solo modelo: `python -m mi_bici.modeling.train --question p1 --model rf`. Cada pregunta
-tiene su catálogo de modelos en su archivo (`p1_demanda.py`, `p2_riesgo.py` y `p3_grupos.py`) y `--params "k=v,..."` cambia sus hiperparámetros. Para buscar hiperparámetros sobre la cuadrícula del catálogo mediante corridas anidadas (nested runs): `mlflow run . -e search -P question=p1 -P model=rf` (o `python -m mi_bici.modeling.search --question p1 --model rf`).
 
 ## Configuración
 
@@ -98,6 +132,38 @@ La UI queda en http://127.0.0.1:5001.
 
 `mlflow.db`, `mlruns/`, `mlartifacts/` y `.env` están en `.gitignore` y no se suben al repo.
 
+## Model Registry
+
+`make registry` compara, en cada pregunta, los candidatos (`stage_of_work=candidate`) contra su
+baseline con la métrica de selección de `config.py`: `val_mae` en P1, `val_average_precision` en
+P2 y `train_silhouette` en P3. Solo toma runs con `git_dirty=False` y con la misma versión de datos
+y los mismos cortes que el baseline, así que hay que hacer commit de los cambios antes de correr los
+experimentos. Los runs de búsqueda no entran.
+
+| Pregunta | Modelo registrado |
+|---|---|
+| P1 | `mibici-equipo03-p1-demanda` |
+| P2 | `mibici-equipo03-p2-riesgo` |
+| P3 | `mibici-equipo03-p3-grupos` |
+
+De los que le ganan al baseline, el mejor queda con el alias `champion` y el segundo con
+`challenger`. Cada versión guarda su
+descripción y su linaje en etiquetas: `source_run`, `git_commit` y `data_version`.
+
+Para usar el modelo en producción se carga por su alias:
+
+```python
+import mlflow
+
+mlflow.set_tracking_uri("http://127.0.0.1:5001")
+modelo = mlflow.pyfunc.load_model("models:/mibici-equipo03-p1-demanda@champion")
+predicciones = modelo.predict(X)  # X con las columnas de la firma del modelo
+```
+
+**¿Por qué aliases y no etapas?** Las etapas (`Staging`, `Production`) están obsoletas desde
+MLflow 2.9. Un alias apunta a una versión: quien usa el modelo siempre carga `@champion`, y
+promover una versión nueva o regresar a la anterior es solo mover el alias, sin cambiar código.
+
 ## Buenas prácticas aplicadas
 
 | Práctica | Cómo se aplica |
@@ -125,10 +191,12 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── plots.py             # gráficas que se registran como artefactos
 │   └── modeling/
 │       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow
-│       ├── evaluate.py      # métricas por tipo de tarea (test_*, train_*)
+│       ├── evaluate.py      # métricas por tipo de tarea (val_*, test_*, train_*)
 │       ├── p1_demanda.py    # P1: catálogo de modelos, variables, evaluación y artefactos
 │       ├── p2_riesgo.py     # P2: lo mismo para el riesgo por bloque
 │       ├── p3_grupos.py     # P3: lo mismo para los grupos de estaciones
+│       ├── registry.py      # lleva el mejor modelo de cada pregunta al Model Registry
+│       ├── search.py        # CLI de búsqueda de hiperparámetros con nested runs
 │       └── train.py         # CLI de entrenamiento: una pregunta y un modelo por run
 ├── data/                    # raw, interim, processed y external. No se versiona
 ├── models/                  # modelos serializados. No se versionan
@@ -137,8 +205,10 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── reports/                 # reporte de la propuesta y figures/
 ├── tests/                   # pruebas unitarias
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make test, make lint, make format
-├── MLproject                # punto de entrada de MLflow
+├── Makefile                 # make data, make train, make registry, make test, make lint
+├── MLproject                # entradas ingest, train y search de MLflow
+├── python_env.yaml          # entorno del MLflow Project
+├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking
 ├── requirements.txt         # dependencias con versiones fijas
 └── pyproject.toml           # metadatos del paquete y configuración de ruff
 ```

@@ -89,11 +89,33 @@ Cada pregunta tiene su catálogo de modelos en su archivo:
 La mejor combinación de una búsqueda se registra como candidato pasándola a `train`, por ejemplo
 `-P params="learning_rate=0.1,max_leaf_nodes=63"`.
 
+### Corrida completa de la entrega
+
+`make experimentos` lanza con `mlflow run` las 18 corridas de la entrega: por pregunta, el
+baseline, los tres candidatos del catálogo, una búsqueda con nested runs y, como candidato, la mejor
+combinación de esa búsqueda (la etiqueta `mejor_params` de su run padre). Toma
+`MLFLOW_TRACKING_URI` del `.env` y se detiene si no lo encuentra.
+
+```bash
+mlflow run . -e ingest --experiment-name mibici-equipo03 --env-manager local
+make experimentos
+make registry
+```
+
+El modelo elegido de cada pregunta en la corrida oficial (commit `ee51bc9`) se reproduce con:
+
+```bash
+mlflow run . -e train -P question=p1 -P model=hgb -P params="learning_rate=0.1,max_leaf_nodes=63" --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e train -P question=p2 -P model=hgb -P params="learning_rate=0.05,max_leaf_nodes=127" --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e train -P question=p3 -P model=kmeans -P params="n_clusters=3" --experiment-name mibici-equipo03 --env-manager local
+```
+
 Otros comandos:
 
 ```bash
 make data              # descarga, limpia y versiona los datos de MiBici
 make train             # registra el baseline y los candidatos de P1, P2 y P3 sin mlflow run
+make experimentos      # corre con mlflow run las 18 corridas de la entrega (usa el .env)
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
 make test              # corre las pruebas de tests/
 make lint              # revisa el formato del código
@@ -173,6 +195,24 @@ predicciones = modelo.predict(X)  # X con las columnas de la firma del modelo
 MLflow 2.9. Un alias apunta a una versión: quien usa el modelo siempre carga `@champion`, y
 promover una versión nueva o regresar a la anterior es solo mover el alias, sin cambiar código.
 
+**Cambio de champion en P3.** `make registry` propone el `champion` con la métrica de selección y
+el equipo revisa la estabilidad y el costo antes de aceptarlo. En P3 propuso `gmm` por su silueta,
+pero con distintas semillas su silueta y el tamaño de sus grupos cambian mucho y deja hasta el 96 %
+de las estaciones en un solo grupo, así que el `champion` pasó a la versión de `kmeans`:
+
+```python
+from mlflow import MlflowClient
+
+cliente = MlflowClient()
+cliente.set_registered_model_alias("mibici-equipo03-p3-grupos", "champion", 2)    # kmeans
+cliente.set_registered_model_alias("mibici-equipo03-p3-grupos", "challenger", 1)  # gmm
+```
+
+Los números de versión son los de la corrida oficial; en otra corrida hay que revisarlos en la UI.
+
+Si se vuelve a correr `make registry`, el `champion` de P3 regresa a `gmm`, porque elige por
+silueta, y hay que repetir este cambio de alias.
+
 ## Buenas prácticas aplicadas
 
 | Práctica | Cómo se aplica |
@@ -214,7 +254,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── reports/                 # reporte de la propuesta y figures/
 ├── tests/                   # pruebas unitarias
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make registry, make test, make lint
+├── Makefile                 # make data, make train, make experimentos, make registry, make test, make lint
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking

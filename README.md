@@ -210,6 +210,9 @@ cliente.set_registered_model_alias("mibici-equipo03-p3-grupos", "challenger", 1)
 
 Los números de versión son los de la corrida oficial; en otra corrida hay que revisarlos en la UI.
 
+Si se vuelve a correr `make registry`, el `champion` de P3 regresa a `gmm`, porque elige por
+silueta, y hay que repetir este cambio de alias.
+
 ## Buenas prácticas aplicadas
 
 | Práctica | Cómo se aplica |

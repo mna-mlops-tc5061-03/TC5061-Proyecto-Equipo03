@@ -55,10 +55,19 @@ Después, desde la raíz del repositorio:
 
 ```bash
 mlflow run . -e ingest --experiment-name mibici-equipo03 --env-manager local
+for q in p1 p2 p3; do
+  mlflow run . -e train -P question=$q -P model=baseline --experiment-name mibici-equipo03 --env-manager local
+done
 mlflow run . -e train -P question=p1 -P model=hgb --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e train -P question=p2 -P model=hgb --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e train -P question=p3 -P model=kmeans --experiment-name mibici-equipo03 --env-manager local
 mlflow run . -e search -P question=p1 -P model=hgb --experiment-name mibici-equipo03 --env-manager local
 make registry
 ```
+
+Así cada pregunta tiene su baseline y un candidato, que es lo mínimo que necesita `make registry`:
+en cada pregunta registra el mejor de los candidatos que le ganan al baseline. Los demás modelos
+del catálogo se corren igual, cambiando `question` y `model`.
 
 `--experiment-name` deja cada run en el experimento que usa el código, y `--env-manager local`
 usa el `.venv` activo en lugar de crear otro entorno a partir de `python_env.yaml`.

@@ -40,3 +40,13 @@ class TestTrainBase:
         """Verifica que una clave fuera del catálogo se rechaza con un mensaje claro."""
         with pytest.raises(ValueError, match="modelo debe ser uno de"):
             ExperimentoRiesgo("xgboost")
+
+    def test_p1_y_p3_guardan_su_modelo_sin_envolver(self):
+        """Verifica que P1 y P3 devuelven self.modelo tal cual en modelo_a_guardar."""
+        for clave in ("P1", "P3"):
+            experimento = EXPERIMENTOS[clave]("baseline")
+            assert experimento.modelo_a_guardar() is None
+            modelo = next(k for k in EXPERIMENTOS[clave].catalogo if k != "baseline")
+            candidato = EXPERIMENTOS[clave](modelo)
+            candidato.modelo = candidato.crear_modelo()
+            assert candidato.modelo_a_guardar() is candidato.modelo

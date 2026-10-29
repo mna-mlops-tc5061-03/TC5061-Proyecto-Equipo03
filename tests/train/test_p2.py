@@ -1,9 +1,12 @@
+import mlflow
+import numpy as np
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from mi_bici.config import UMBRAL_DECISION_P2
+from mi_bici.config import OBJETIVO_P2, UMBRAL_DECISION_P2, VARIABLES_P2
 from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo
 
 
@@ -39,3 +42,27 @@ class TestTrainP2:
         """Verifica que ExperimentoRiesgo inicialice su umbral_decision con el valor de config."""
         experimento = ExperimentoRiesgo("hgb")
         assert experimento.umbral_decision == UMBRAL_DECISION_P2
+
+    def test_modelo_guardado_predice_con_umbral_de_validacion(self, tmp_path):
+        """Verifica que el modelo guardado con MLflow predice igual que predict_proba >= val_umbral_decision."""
+        rng = np.random.default_rng(42)
+        datos = pd.DataFrame(
+            {col: rng.normal(size=40) for col in VARIABLES_P2}
+            | {OBJETIVO_P2: (rng.random(40) > 0.7).astype(int)}
+        )
+        experimento = ExperimentoRiesgo("hgb")
+        experimento.train = datos
+        experimento.entrenar(datos.iloc[:25])
+        metricas = experimento.evaluar(datos.iloc[25:], "val")
+
+        ruta = tmp_path / "modelo"
+        mlflow.sklearn.save_model(
+            experimento.modelo_a_guardar(),
+            ruta,
+            skops_trusted_types=list(experimento.tipos_confiables),
+        )
+        X = datos[VARIABLES_P2]
+        esperado = (
+            experimento.modelo.predict_proba(X)[:, 1] >= metricas["val_umbral_decision"]
+        ).astype(int)
+        np.testing.assert_array_equal(mlflow.pyfunc.load_model(ruta).predict(X), esperado)

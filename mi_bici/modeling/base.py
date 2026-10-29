@@ -225,6 +225,10 @@ class ExperimentoBase(ABC):
             Rutas de los archivos que se registran como artefactos.
         """
 
+    def modelo_a_guardar(self):
+        """Devuelve el estimador que se guarda en MLflow al terminar el run."""
+        return self.modelo
+
     def hiperparametros(self) -> dict:
         """Devuelve la clave del catálogo, la familia y los hiperparámetros del estimador.
 
@@ -330,20 +334,21 @@ class ExperimentoBase(ABC):
                     subcarpeta = "plots" if ruta.suffix == ".png" else "data"
                     mlflow.log_artifact(str(ruta), artifact_path=subcarpeta)
 
-            if self.modelo is not None:
+            modelo = self.modelo_a_guardar()
+            if modelo is not None:
                 ejemplo = self.X_train.head(3)
                 kwargs_modelo = {
                     "name": "model",
-                    "signature": infer_signature(ejemplo, self.modelo.predict(ejemplo)),
+                    "signature": infer_signature(ejemplo, modelo.predict(ejemplo)),
                     "input_example": ejemplo,
                 }
                 if self.entrada.serializacion == "cloudpickle":
                     mlflow.sklearn.log_model(
-                        self.modelo, **kwargs_modelo, serialization_format="cloudpickle"
+                        modelo, **kwargs_modelo, serialization_format="cloudpickle"
                     )
                 else:
                     mlflow.sklearn.log_model(
-                        self.modelo,
+                        modelo,
                         **kwargs_modelo,
                         skops_trusted_types=list(self.tipos_confiables),
                     )

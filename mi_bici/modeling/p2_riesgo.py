@@ -5,8 +5,10 @@ from typing import ClassVar
 
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+from sklearn.frozen import FrozenEstimator
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_recall_curve
+from sklearn.model_selection import FixedThresholdClassifier
 
 from mi_bici import plots
 from mi_bici.config import (
@@ -136,6 +138,16 @@ class ExperimentoRiesgo(ExperimentoBase):
                 plots.curva_pr(self.test[OBJETIVO_P2], self.puntaje, carpeta / "curva_pr.png")
             )
         return rutas
+
+    def modelo_a_guardar(self):
+        """Envuelve el clasificador con `umbral_decision` para que `predict` aplique ese corte."""
+        if self.modelo is None:
+            return None
+        return FixedThresholdClassifier(
+            FrozenEstimator(self.modelo),
+            threshold=self.umbral_decision,
+            response_method="predict_proba",
+        )
 
     def hiperparametros(self) -> dict:
         """Devuelve el modelo, el bloque y el umbral que definen la etiqueta, y sus hiperparámetros."""

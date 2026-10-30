@@ -6,8 +6,14 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from mi_bici.config import OBJETIVO_P2, UMBRAL_DECISION_P2, VARIABLES_P2
-from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo
+from mi_bici.config import (
+    CAPACIDAD_REBALANCEO,
+    COLUMNA_FECHA_P2,
+    OBJETIVO_P2,
+    UMBRAL_DECISION_P2,
+    VARIABLES_P2,
+)
+from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo, umbral_por_capacidad
 
 
 class TestTrainP2:
@@ -43,17 +49,30 @@ class TestTrainP2:
         experimento = ExperimentoRiesgo("hgb")
         assert experimento.umbral_decision == UMBRAL_DECISION_P2
 
+    def test_umbral_por_capacidad_con_puntajes_conocidos(self):
+        """Verifica que el umbral sea el más bajo que no rebasa la capacidad por bloque."""
+        puntaje = np.array([0.9, 0.8, 0.7, 0.6, 0.5, 0.4])
+        bloques = ["b1", "b1", "b1", "b2", "b2", "b2"]  # 2 bloques
+        # Con capacidad=2 por bloque caben hasta 4 alertas en total -> umbral 0.6
+        assert umbral_por_capacidad(puntaje, bloques, capacidad=2) == 0.6
+        # Si hay empate en 0.6 que haría pasar de 2 alertas en 1 bloque, sube al siguiente (0.9)
+        assert umbral_por_capacidad(np.array([0.9, 0.6, 0.6, 0.4]), ["b1"] * 4, capacidad=2) == 0.9
+
     def test_modelo_guardado_predice_con_umbral_de_validacion(self, tmp_path):
         """Verifica que el modelo guardado con MLflow predice igual que predict_proba >= val_umbral_decision."""
         rng = np.random.default_rng(42)
         datos = pd.DataFrame(
             {col: rng.normal(size=40) for col in VARIABLES_P2}
-            | {OBJETIVO_P2: (rng.random(40) > 0.7).astype(int)}
+            | {
+                COLUMNA_FECHA_P2: np.repeat(["2026-06-01", "2026-06-02"], 20),
+                OBJETIVO_P2: (rng.random(40) > 0.7).astype(int),
+            }
         )
         experimento = ExperimentoRiesgo("hgb")
         experimento.train = datos
         experimento.entrenar(datos.iloc[:25])
         metricas = experimento.evaluar(datos.iloc[25:], "val")
+        assert metricas["val_alertas_por_bloque"] <= CAPACIDAD_REBALANCEO
 
         ruta = tmp_path / "modelo"
         mlflow.sklearn.save_model(

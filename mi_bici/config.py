@@ -132,7 +132,10 @@ FESTIVOS = [
 # de su capacidad
 BLOQUE_HORAS = 3
 UMBRAL_RIESGO = 0.4
-# Umbral de decisión inicial del clasificador en P2 (se calibra en validación con F1)
+# Supuesto: un camión de rebalanceo alcanza a visitar 10 estaciones en un bloque de 3 horas
+# (~18 min por estación entre traslado y carga o descarga de bicicletas)
+CAPACIDAD_REBALANCEO = 10
+# Umbral de decisión inicial del clasificador en P2 (se calibra en validación con CAPACIDAD_REBALANCEO)
 UMBRAL_DECISION_P2 = 0.5
 
 # P3: valores de k que se prueban y días mínimos con viajes para que el perfil sea estable

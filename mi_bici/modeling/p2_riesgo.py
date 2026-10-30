@@ -4,16 +4,17 @@ from pathlib import Path
 from typing import ClassVar
 
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.frozen import FrozenEstimator
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import precision_recall_curve
 from sklearn.model_selection import FixedThresholdClassifier
 
 from mi_bici import plots
 from mi_bici.config import (
     BASELINE_P2,
     BLOQUE_HORAS,
+    CAPACIDAD_REBALANCEO,
     COLUMNA_FECHA_P2,
     CORTE_PRUEBA,
     OBJETIVO_P2,
@@ -26,6 +27,28 @@ from mi_bici.dataset import load_processed_stations, load_processed_travels
 from mi_bici.features import etiqueta_riesgo, flujo_por_bloque
 from mi_bici.modeling.base import ARBOLES_HGB, ARBOLES_RF, ExperimentoBase, Modelo
 from mi_bici.modeling.evaluate import metricas_clasificacion
+
+
+def umbral_por_capacidad(
+    puntaje: np.ndarray, bloques, capacidad: float = CAPACIDAD_REBALANCEO
+) -> float:
+    """Elige el umbral más bajo cuyo promedio de alertas por bloque no rebasa `capacidad`.
+
+    Args:
+        puntaje: Probabilidad estimada de riesgo para cada estación y bloque.
+        bloques: Identificador del bloque de cada fila.
+        capacidad: Máximo promedio de estaciones en alerta por bloque que el camión puede atender.
+
+    Returns:
+        El umbral de decisión más bajo que cumple el límite, o `1.0` si ninguno lo cumple.
+    """
+    n_bloques = pd.Series(bloques).nunique()
+    if n_bloques == 0 or len(puntaje) == 0:
+        return UMBRAL_DECISION_P2
+    umbrales, conteos = np.unique(puntaje, return_counts=True)
+    alertas_por_bloque = np.cumsum(conteos[::-1])[::-1] / n_bloques
+    validos = umbrales[alertas_por_bloque <= capacidad]
+    return float(validos[0]) if len(validos) > 0 else 1.0
 
 
 class ExperimentoRiesgo(ExperimentoBase):
@@ -88,35 +111,28 @@ class ExperimentoRiesgo(ExperimentoBase):
 
         Returns:
             `<prefijo>_recall`, `<prefijo>_precision`, `<prefijo>_f1`,
-            `<prefijo>_average_precision` y la proporción de bloques en riesgo
-            (`train_tasa_riesgo`, `<prefijo>_tasa_riesgo`).
+            `<prefijo>_average_precision`, `<prefijo>_alertas_por_bloque` y la proporción de
+            bloques en riesgo (`train_tasa_riesgo`, `<prefijo>_tasa_riesgo`).
         """
         if self.modelo is None:
             self.pred = self.puntaje = datos[BASELINE_P2].to_numpy()
         else:
             self.puntaje = self.modelo.predict_proba(datos[VARIABLES_P2])[:, 1]
             if prefijo == "val":
-                precisions, recalls, thresholds = precision_recall_curve(
-                    datos[OBJETIVO_P2], self.puntaje
+                self.umbral_decision = umbral_por_capacidad(
+                    self.puntaje, datos[COLUMNA_FECHA_P2], CAPACIDAD_REBALANCEO
                 )
-                denominador = precisions[:-1] + recalls[:-1]
-                f1_scores = np.divide(
-                    2 * precisions[:-1] * recalls[:-1],
-                    denominador,
-                    out=np.zeros_like(thresholds),
-                    where=denominador > 0,
-                )
-                if len(f1_scores) > 0 and np.max(f1_scores) > 0:
-                    self.umbral_decision = float(thresholds[np.argmax(f1_scores)])
-                else:
-                    self.umbral_decision = UMBRAL_DECISION_P2
             self.pred = (self.puntaje >= self.umbral_decision).astype(int)
         metricas = metricas_clasificacion(datos[OBJETIVO_P2], self.pred, self.puntaje, prefijo)
         # La tasa real de riesgo justifica el umbral y el uso de average precision
         metricas["train_tasa_riesgo"] = self.train[OBJETIVO_P2].mean()
         metricas[f"{prefijo}_tasa_riesgo"] = datos[OBJETIVO_P2].mean()
+        n_bloques = datos[COLUMNA_FECHA_P2].nunique()
+        metricas[f"{prefijo}_alertas_por_bloque"] = (
+            float(self.pred.sum() / n_bloques) if n_bloques else 0.0
+        )
         if self.modelo is not None:
-            metricas[f"{prefijo}_umbral_decision"] = round(self.umbral_decision, 4)
+            metricas[f"{prefijo}_umbral_decision"] = self.umbral_decision
         return metricas
 
     def artefactos(self, carpeta: Path) -> list[Path]:
@@ -155,6 +171,7 @@ class ExperimentoRiesgo(ExperimentoBase):
             **super().hiperparametros(),
             "umbral_riesgo": UMBRAL_RIESGO,
             "bloque_horas": BLOQUE_HORAS,
+            "capacidad_rebalanceo": CAPACIDAD_REBALANCEO,
         }
         if self.modelo is not None:
             datos["variables"] = ",".join(VARIABLES_P2)

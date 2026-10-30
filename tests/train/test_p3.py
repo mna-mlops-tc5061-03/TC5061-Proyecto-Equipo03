@@ -4,6 +4,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from mi_bici.modeling.p3_grupos import ExperimentoGrupos
+from mi_bici.config import (
+    K_CANDIDATOS
+)
 
 
 class TestTrainP3:
@@ -41,3 +44,15 @@ class TestTrainP3:
         modelo = experimento.crear_modelo()
         assert isinstance(modelo, Pipeline)
         assert modelo.named_steps["modelo"].n_components == 6
+
+    def test_k_en_borde_detecta_extremos(self, caplog):
+        """Verifica la etiqueta k_en_borde y el log_warning cuando k cae en el borde de K_CANDIDATOS."""
+        experimento = ExperimentoGrupos("kmeans")
+        experimento.modelo = experimento.crear_modelo()
+        k_min = min(K_CANDIDATOS)
+        experimento.k = k_min
+        experimento.k_en_borde = experimento.k in (min(K_CANDIDATOS), max(K_CANDIDATOS))
+        assert experimento.etiquetas()["k_en_borde"] == "True"
+        experimento.k = 5
+        experimento.k_en_borde = experimento.k in (min(K_CANDIDATOS), max(K_CANDIDATOS))
+        assert experimento.etiquetas()["k_en_borde"] == "False"

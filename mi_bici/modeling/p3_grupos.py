@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import ClassVar
 
+from loguru import logger
 import pandas as pd
 from sklearn.cluster import Birch, KMeans
 from sklearn.metrics import silhouette_score
@@ -94,6 +95,15 @@ class ExperimentoGrupos(ExperimentoBase):
         self.k = max(self.silueta_por_k, key=self.silueta_por_k.get)
         self.modelo = ajustes[self.k]
 
+        # Detectar si el k elegido cayó en el borde del rango de candidatos
+        self.k_en_borde = self.k in (min(K_CANDIDATOS), max(K_CANDIDATOS))
+        if self.k_en_borde:
+            logger.warning(
+                f"P3-{self.clave}: el k elegido ({self.k}) está en el borde de "
+                f"K_CANDIDATOS ({min(K_CANDIDATOS)}..{max(K_CANDIDATOS)}). "
+                "Considera ampliar el rango de búsqueda."
+            )
+
     def evaluar(self, datos, prefijo: str) -> dict:
         """Asigna los grupos y mide su separación. El baseline agrupa por municipio.
 
@@ -150,3 +160,10 @@ class ExperimentoGrupos(ExperimentoBase):
             "k": self.k,
             "k_probados": ",".join(map(str, self.k_probados)),
         }
+
+    def etiquetas(self) -> dict:
+        """Agrega la etiqueta k_en_borde si el k elegido cayó en el extremo del catálogo."""
+        tags = super().etiquetas()
+        if self.modelo is not None and hasattr(self, "k_en_borde"):
+            tags["k_en_borde"] = str(self.k_en_borde)
+        return tags

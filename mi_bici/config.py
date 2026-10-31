@@ -139,7 +139,7 @@ CAPACIDAD_REBALANCEO = 10
 UMBRAL_DECISION_P2 = 0.5
 
 # P3: valores de k que se prueban y días mínimos con viajes para que el perfil sea estable
-K_CANDIDATOS = list(range(3, 9))
+K_CANDIDATOS = list(range(2, 9))
 MIN_DIAS_PERFIL = 30
 
 # Variables que usa cada modelo. Todas vienen de periodos anteriores al que se predice

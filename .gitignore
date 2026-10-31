@@ -3,6 +3,10 @@
 /data/*
 !/data/manifest.json
 
+# Reportes de DeepChecks: el HTML muestra filas de ejemplo de los datos. El resumen se vuelve
+# a generar con python -m mi_bici.validacion
+/reports/deepchecks/
+
 # MLflow: base de tracking, corridas y artefactos locales
 mlflow.db
 mlruns/

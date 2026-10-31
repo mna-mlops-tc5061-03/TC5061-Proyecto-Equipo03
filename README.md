@@ -119,7 +119,7 @@ make experimentos      # corre con mlflow run las 18 corridas de la entrega (usa
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
 make test              # corre las pruebas de tests/
 make lint              # revisa el formato del código
-make seguridad         # revisa el código con bandit y las dependencias con pip-audit
+make security          # revisa el código con bandit y las dependencias con pip-audit
 ```
 
 ## Configuración
@@ -255,7 +255,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── reports/                 # reporte de la propuesta y figures/
 ├── tests/                   # pruebas unitarias
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make experimentos, make registry, make test, make lint, make seguridad
+├── Makefile                 # make data, make train, make experimentos, make registry, make test, make lint, make security
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking

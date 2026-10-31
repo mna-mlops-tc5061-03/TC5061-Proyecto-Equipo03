@@ -47,8 +47,8 @@ test:
 
 
 ## Revisa el código con bandit y las dependencias con pip-audit
-.PHONY: seguridad
-seguridad:
+.PHONY: security
+security:
 	bandit -r mi_bici -c pyproject.toml -q
 	pip-audit -r requirements.txt
 

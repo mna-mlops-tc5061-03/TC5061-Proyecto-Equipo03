@@ -1,9 +1,9 @@
 """Define el experimento de P3: grupos de estaciones con patrones de uso parecidos."""
 
-from loguru import logger
 from pathlib import Path
 from typing import ClassVar
 
+from loguru import logger
 import pandas as pd
 from sklearn.cluster import Birch, KMeans
 from sklearn.metrics import silhouette_score

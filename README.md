@@ -75,7 +75,7 @@ usa el `.venv` activo en lugar de crear otro entorno a partir de `python_env.yam
 | Entrada | Parámetros | Qué hace |
 |---|---|---|
 | `ingest` | — | Descarga, limpia y versiona los datos (lo mismo que `make data`) |
-| `train` | `question` (`p1`, `p2` o `p3`), `model` (clave del catálogo, `baseline` por defecto) y `params` (`"k=v,..."`, opcional) | Un run con un modelo: ajusta antes de `corte_validacion`, mide en validación y después en prueba (P3, sin etiquetas, se mide en entrenamiento) |
+| `train` | `question` (`p1`, `p2` o `p3`), `model` (clave del catálogo, `baseline` por defecto) y `params` (`"k=v,..."` o `mejor`, opcional) | Un run con un modelo: ajusta antes de `corte_validacion`, mide en validación y después en prueba (P3, sin etiquetas, se mide en entrenamiento) |
 | `search` | `question`, `model` (`hgb` por defecto) y `grid` (`"k=v1\|v2,..."`, vacío usa la cuadrícula del catálogo) | Un run padre con un run hijo por combinación, medidos solo en validación. El padre guarda la mejor en la etiqueta `mejor_params` |
 
 Cada pregunta tiene su catálogo de modelos en su archivo:
@@ -86,14 +86,15 @@ Cada pregunta tiene su catálogo de modelos en su archivo:
 | P2 | `p2_riesgo.py` | `baseline`, `hgb`, `logreg` y `rf` |
 | P3 | `p3_grupos.py` | `baseline`, `kmeans`, `birch` y `gmm` |
 
-La mejor combinación de una búsqueda se registra como candidato pasándola a `train`, por ejemplo
-`-P params="learning_rate=0.1,max_leaf_nodes=63"`.
+La mejor combinación de una búsqueda se registra como candidato con `-P params=mejor`, que toma la
+etiqueta `mejor_params` de la búsqueda más reciente del mismo modelo con los mismos datos. Si no
+hay búsqueda, `train` se detiene y dice cómo correrla.
 
 ### Corrida completa de la entrega
 
 `make experimentos` lanza con `mlflow run` las 18 corridas de la entrega: por pregunta, el
 baseline, los tres candidatos del catálogo, una búsqueda con nested runs y, como candidato, la mejor
-combinación de esa búsqueda (la etiqueta `mejor_params` de su run padre). Toma
+combinación de esa búsqueda (`params=mejor`), sin hiperparámetros escritos a mano. Toma
 `MLFLOW_TRACKING_URI` del `.env` y se detiene si no lo encuentra.
 
 ```bash

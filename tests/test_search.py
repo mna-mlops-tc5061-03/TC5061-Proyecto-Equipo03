@@ -1,12 +1,14 @@
 import mlflow
 import numpy as np
 import pandas as pd
+import pytest
 from sklearn.linear_model import Ridge
 
-from mi_bici.modeling import base
+from mi_bici.modeling import base, train
 from mi_bici.modeling.base import ExperimentoBase, Modelo
 from mi_bici.modeling.evaluate import metricas_regresion
 from mi_bici.modeling.search import leer_cuadricula
+from mi_bici.modeling.train import mejores_params
 
 
 class ExperimentoFalso(ExperimentoBase):
@@ -62,3 +64,27 @@ class TestSearch:
         assert mejor["alpha"] == 0.1
         padre = mlflow.get_run(run_id)
         assert padre.data.tags["mejor_params"] == "alpha=0.1"
+
+    def test_mejores_params_toma_la_busqueda_mas_reciente(self, tmp_path, monkeypatch):
+        """Verifica que params=mejor lee mejor_params del padre más reciente, no de sus hijos."""
+        uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+        monkeypatch.setattr(base, "TRACKING_URI", uri)
+        monkeypatch.setattr(train, "TRACKING_URI", uri)
+
+        ExperimentoFalso("ridge").buscar()
+        assert mejores_params("P1", "ridge") == "alpha=0.1"
+        ExperimentoFalso("ridge").buscar({"alpha": [1000.0]})
+        assert mejores_params("P1", "ridge") == "alpha=1000.0"
+
+    def test_mejores_params_sin_busqueda_con_los_mismos_datos(self, tmp_path, monkeypatch):
+        """Verifica que falla con un mensaje claro si la búsqueda es de otros datos o no existe."""
+        uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+        monkeypatch.setattr(base, "TRACKING_URI", uri)
+        monkeypatch.setattr(train, "TRACKING_URI", uri)
+
+        with pytest.raises(ValueError, match="No hay una búsqueda de P1-ridge"):
+            mejores_params("P1", "ridge")
+        ExperimentoFalso("ridge").buscar()
+        monkeypatch.setattr(train, "version_datos", lambda: "otros_datos")
+        with pytest.raises(ValueError, match="No hay una búsqueda de P1-ridge"):
+            mejores_params("P1", "ridge")

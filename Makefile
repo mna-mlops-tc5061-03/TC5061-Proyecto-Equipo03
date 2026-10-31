@@ -75,8 +75,9 @@ train:
 
 
 ## Corre con mlflow run el baseline, los candidatos y la búsqueda de P1, P2 y P3
-# Al final de cada pregunta corre como candidato la mejor combinación de su búsqueda (etiqueta
-# mejor_params del run padre), porque make registry no toma los hijos de la búsqueda
+# Al final de cada pregunta corre como candidato la mejor combinación de su búsqueda
+# (params=mejor lee la etiqueta mejor_params del run padre), porque make registry no toma los
+# hijos de la búsqueda
 .PHONY: experimentos
 experimentos:
 	@test -n "$(MLFLOW_TRACKING_URI)" || { echo "Falta MLFLOW_TRACKING_URI: cp .env.example .env"; exit 1; }
@@ -85,19 +86,19 @@ experimentos:
 	$(MLFLOW_RUN) -e train -P question=p1 -P model=ridge
 	$(MLFLOW_RUN) -e train -P question=p1 -P model=hgb
 	$(MLFLOW_RUN) -e search -P question=p1 -P model=hgb
-	$(MLFLOW_RUN) -e train -P question=p1 -P model=hgb -P params="learning_rate=0.1,max_leaf_nodes=63"
+	$(MLFLOW_RUN) -e train -P question=p1 -P model=hgb -P params=mejor
 	$(MLFLOW_RUN) -e train -P question=p2 -P model=baseline
 	$(MLFLOW_RUN) -e train -P question=p2 -P model=hgb
 	$(MLFLOW_RUN) -e train -P question=p2 -P model=logreg
 	$(MLFLOW_RUN) -e train -P question=p2 -P model=rf
 	$(MLFLOW_RUN) -e search -P question=p2 -P model=hgb
-	$(MLFLOW_RUN) -e train -P question=p2 -P model=hgb -P params="learning_rate=0.05,max_leaf_nodes=127"
+	$(MLFLOW_RUN) -e train -P question=p2 -P model=hgb -P params=mejor
 	$(MLFLOW_RUN) -e train -P question=p3 -P model=baseline
 	$(MLFLOW_RUN) -e train -P question=p3 -P model=kmeans
 	$(MLFLOW_RUN) -e train -P question=p3 -P model=birch
 	$(MLFLOW_RUN) -e train -P question=p3 -P model=gmm
 	$(MLFLOW_RUN) -e search -P question=p3 -P model=kmeans
-	$(MLFLOW_RUN) -e train -P question=p3 -P model=kmeans -P params="n_clusters=3"
+	$(MLFLOW_RUN) -e train -P question=p3 -P model=kmeans -P params=mejor
 
 
 ## Registra el mejor modelo de cada pregunta con el alias champion

@@ -75,7 +75,7 @@ usa el `.venv` activo en lugar de crear otro entorno a partir de `python_env.yam
 | Entrada | Parámetros | Qué hace |
 |---|---|---|
 | `ingest` | — | Descarga, limpia y versiona los datos (lo mismo que `make data`) |
-| `train` | `question` (`p1`, `p2` o `p3`), `model` (clave del catálogo, `baseline` por defecto) y `params` (`"k=v,..."`, opcional) | Un run con un modelo: ajusta antes de `corte_validacion`, mide en validación y después en prueba (P3, sin etiquetas, se mide en entrenamiento) |
+| `train` | `question` (`p1`, `p2` o `p3`), `model` (clave del catálogo, `baseline` por defecto) y `params` (`"k=v,..."` o `mejor`, opcional) | Un run con un modelo: ajusta antes de `corte_validacion`, mide en validación y después en prueba (P3, sin etiquetas, se mide en entrenamiento) |
 | `search` | `question`, `model` (`hgb` por defecto) y `grid` (`"k=v1\|v2,..."`, vacío usa la cuadrícula del catálogo) | Un run padre con un run hijo por combinación, medidos solo en validación. El padre guarda la mejor en la etiqueta `mejor_params` |
 
 Cada pregunta tiene su catálogo de modelos en su archivo:
@@ -86,14 +86,15 @@ Cada pregunta tiene su catálogo de modelos en su archivo:
 | P2 | `p2_riesgo.py` | `baseline`, `hgb`, `logreg` y `rf` |
 | P3 | `p3_grupos.py` | `baseline`, `kmeans`, `birch` y `gmm` |
 
-La mejor combinación de una búsqueda se registra como candidato pasándola a `train`, por ejemplo
-`-P params="learning_rate=0.1,max_leaf_nodes=63"`.
+La mejor combinación de una búsqueda se registra como candidato con `-P params=mejor`, que toma la
+etiqueta `mejor_params` de la búsqueda más reciente del mismo modelo con los mismos datos. Si no
+hay búsqueda, `train` se detiene y dice cómo correrla.
 
 ### Corrida completa de la entrega
 
 `make experimentos` lanza con `mlflow run` las 18 corridas de la entrega: por pregunta, el
 baseline, los tres candidatos del catálogo, una búsqueda con nested runs y, como candidato, la mejor
-combinación de esa búsqueda (la etiqueta `mejor_params` de su run padre). Toma
+combinación de esa búsqueda (`params=mejor`), sin hiperparámetros escritos a mano. Toma
 `MLFLOW_TRACKING_URI` del `.env` y se detiene si no lo encuentra.
 
 ```bash
@@ -118,6 +119,7 @@ make train             # registra el baseline y los candidatos de P1, P2 y P3 si
 make experimentos      # corre con mlflow run las 18 corridas de la entrega (usa el .env)
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
 make test              # corre las pruebas de tests/
+make test-fast         # corre las pruebas sin las lentas, que levantan MLflow
 make lint              # revisa el formato del código
 make security          # revisa el código con bandit y las dependencias con pip-audit
 ```
@@ -224,7 +226,7 @@ silueta, y hay que repetir este cambio de alias.
 | Código en módulos | Los notebooks solo exploran; la lógica vive en `mi_bici/` |
 | Registro de experimentos | Todos los runs se registran en MLflow con los mismos parámetros, métricas y etiquetas |
 | Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
-| Pruebas y estilo | Pruebas unitarias en `tests/` y formato revisado con ruff |
+| Pruebas y estilo | Pruebas unitarias en `tests/` y formato del código y de las pruebas revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
 | Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
@@ -253,9 +255,9 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb
 ├── references/              # ML Canvas, diagramas y referencias
 ├── reports/                 # reporte de la propuesta y figures/
-├── tests/                   # pruebas unitarias
+├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make experimentos, make registry, make test, make lint, make security
+├── Makefile                 # make data, make train, make experimentos, make registry, make test, make test-fast, make lint, make security
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking

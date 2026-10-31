@@ -115,6 +115,7 @@ Otros comandos:
 
 ```bash
 make data              # descarga, limpia y versiona los datos de MiBici
+make validar-datos     # valida integridad y drift de los datos con DeepChecks
 make train             # registra el baseline y los candidatos de P1, P2 y P3 sin mlflow run
 make experimentos      # corre con mlflow run las 18 corridas de la entrega (usa el .env)
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
@@ -124,17 +125,26 @@ make lint              # revisa el formato del código
 
 ### Validación de datos con DeepChecks
 
-Con los datos procesados, este comando revisa la integridad de los viajes y de las estaciones:
+Con los datos procesados, este comando revisa la integridad de los datos y el drift entre
+entrenamiento y prueba:
 
 ```bash
-python -m mi_bici.validacion integridad
+make validar-datos
 ```
 
-Corre la suite `data_integrity` de DeepChecks con condiciones explícitas, definidas en
+**Integridad** (`python -m mi_bici.validacion integridad`). Corre sobre los viajes y las
+estaciones la suite `data_integrity` de DeepChecks con condiciones explícitas, definidas en
 `config.py`: a lo más 5 % de nulos por columna, a lo más 1 % de filas duplicadas y ninguna
 columna con entre 1 % y 10 % de valores de otro tipo. También revisa columnas con un solo valor,
 caracteres especiales, formas distintas de nulo, variantes de un mismo texto, longitudes de texto
 atípicas y columnas muy correlacionadas.
+
+**Drift** (`python -m mi_bici.validacion drift`). Corre la suite `train_test_validation` sobre
+las tablas de variables de P1 (`demanda_diaria`) y P2 (`etiqueta_riesgo` sobre
+`flujo_por_bloque`), con el entrenamiento antes de `CORTE_PRUEBA` y la prueba desde esa fecha.
+`FeatureDrift` marca una variable si su puntaje llega a 0.2 y `LabelDrift` marca el objetivo
+desde 0.15. El resumen trae el puntaje de cada variable y la media del objetivo en cada
+conjunto; en P2 es la tasa de riesgo.
 
 Deja en `reports/deepchecks/` un HTML por tabla y `resumen.json`, con cada condición, si pasó y
 por qué. La carpeta no se versiona porque el HTML muestra filas de ejemplo; el resumen solo trae
@@ -143,6 +153,9 @@ que corre en el CI sin los datos de MiBici.
 
 DeepChecks 0.19.1 es de diciembre de 2024 y no soporta numpy 2 ni scikit-learn 1.9.
 `preparar_deepchecks()` en `mi_bici/validacion.py` agrega lo que le falta antes de importarlo.
+Tres chequeos no funcionan con pandas 3, numpy 2 o scikit-learn 1.9 y se quitan de las suites,
+junto con los que no aplican a estas tablas. El motivo de cada uno está en
+`CHEQUEOS_QUE_SE_QUITAN` y `CHEQUEOS_DRIFT_QUE_SE_QUITAN`.
 
 ## Configuración
 

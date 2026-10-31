@@ -142,11 +142,18 @@ UMBRAL_DECISION_P2 = 0.5
 K_CANDIDATOS = list(range(2, 9))
 MIN_DIAS_PERFIL = 30
 
+# P1: ventana larga de la tendencia. La tendencia es la media de 7 días menos la de 28: positiva si
+# la estación viene subiendo y negativa si viene bajando. 28 días son 4 semanas completas, así que
+# la media larga no depende de qué días de la semana caigan en la ventana
+VENTANA_TENDENCIA = 28
+
 # Variables que usa cada modelo. Todas vienen de periodos anteriores al que se predice
 VARIABLES_P1 = [
     "viajes_lag_1",
     "viajes_lag_7",
     "viajes_media_7",
+    f"viajes_media_{VENTANA_TENDENCIA}",
+    "viajes_tendencia",
     "dia_semana",
     "festivo",
     "capacidad",

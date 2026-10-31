@@ -7,7 +7,13 @@ vienen de periodos anteriores (`shift` de al menos 1). Así ninguna usa informac
 import numpy as np
 import pandas as pd
 
-from mi_bici.config import BLOQUE_HORAS, CORTE_PRUEBA, FESTIVOS, MIN_DIAS_PERFIL
+from mi_bici.config import (
+    BLOQUE_HORAS,
+    CORTE_PRUEBA,
+    FESTIVOS,
+    MIN_DIAS_PERFIL,
+    VENTANA_TENDENCIA,
+)
 from mi_bici.dataset import parse_datetime_series
 
 
@@ -104,8 +110,10 @@ def demanda_diaria(viajes: pd.DataFrame, estaciones: pd.DataFrame) -> pd.DataFra
     """Construye las variables de P1: viajes iniciados por estación y día.
 
     El rezago de 7 días captura el patrón semanal (un lunes se parece al lunes anterior) y es a
-    la vez el baseline de P1. La capacidad indica el tamaño de la estación. Solo quedan las
-    estaciones de la nomenclatura, porque de las demás no se conoce la capacidad.
+    la vez el baseline de P1. La tendencia, media de 7 días menos media de `VENTANA_TENDENCIA`
+    días, dice si la demanda de la estación viene subiendo o bajando, para acercarse mejor a los
+    picos. Las dos medias usan solo días anteriores. La capacidad indica el tamaño de la estación.
+    Solo quedan las estaciones de la nomenclatura, porque de las demás no se conoce la capacidad.
 
     Args:
         viajes: Viajes procesados por la ingesta.
@@ -113,8 +121,9 @@ def demanda_diaria(viajes: pd.DataFrame, estaciones: pd.DataFrame) -> pd.DataFra
 
     Returns:
         Una fila por estación y día con `viajes` (objetivo), `viajes_lag_1`, `viajes_lag_7`,
-        `viajes_media_7`, `dia_semana`, `festivo` y `capacidad`. Se descartan los primeros días
-        de cada estación, que no tienen suficiente historia para los rezagos.
+        `viajes_media_7`, `viajes_media_28`, `viajes_tendencia`, `dia_semana`, `festivo` y
+        `capacidad`. Se descartan los primeros `VENTANA_TENDENCIA` días de cada estación, que no
+        tienen suficiente historia para la media larga.
     """
     viajes = convertir_fechas(viajes)
     conteos = (
@@ -127,6 +136,10 @@ def demanda_diaria(viajes: pd.DataFrame, estaciones: pd.DataFrame) -> pd.DataFra
     )
     demanda = _malla_completa(conteos, "fecha", "D")
     demanda = agregar_rezagos(demanda, "viajes", [1, 7], ventana=7)
+    demanda = agregar_rezagos(demanda, "viajes", [], ventana=VENTANA_TENDENCIA)
+    demanda["viajes_tendencia"] = (
+        demanda["viajes_media_7"] - demanda[f"viajes_media_{VENTANA_TENDENCIA}"]
+    )
     demanda = agregar_calendario(demanda, "fecha")
     demanda = demanda.merge(estaciones[["estacion_id", "capacidad"]], on="estacion_id")
     return demanda.dropna().reset_index(drop=True)

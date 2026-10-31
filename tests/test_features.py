@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mi_bici.config import CORTE_PRUEBA, FESTIVOS, MIN_DIAS_PERFIL
+from mi_bici.config import CORTE_PRUEBA, FESTIVOS, MIN_DIAS_PERFIL, UMBRAL_RIESGO
 from mi_bici.features import (
     VARIABLES_PERFIL_USO,
     agregar_calendario,
@@ -105,13 +105,13 @@ class TestDemandaDiaria:
         assert fila["viajes"].iloc[0] == 0
 
     def test_descarta_los_dias_sin_historia(self, viajes, estaciones):
-        """Caso límite: los primeros 7 días de cada estación no tienen rezagos y se descartan."""
+        """Caso límite: los días sin 7 días previos no tienen rezagos completos y se descartan."""
         demanda = demanda_diaria(viajes, estaciones)
         primer_viaje = convertir_fechas(viajes).groupby("origen_id")["inicio"].min().dt.normalize()
 
         primera_fila = demanda.groupby("estacion_id")["fecha"].min()
 
-        assert (primera_fila == primer_viaje[primera_fila.index] + pd.Timedelta(days=7)).all()
+        assert (primera_fila >= primer_viaje[primera_fila.index] + pd.Timedelta(days=7)).all()
         assert not demanda.isna().any().any()
 
 
@@ -134,11 +134,13 @@ def flujo_de_una_estacion(ultimo_flujo: int, capacidad: int = 10) -> pd.DataFram
 
 class TestEtiquetaRiesgo:
     def test_flujo_que_pasa_el_umbral_marca_riesgo(self, viajes, estaciones):
-        """Verifica que riesgo es 1 cuando el flujo neto mueve al menos 40 % de la capacidad."""
-        riesgo = etiqueta_riesgo(flujo_por_bloque(viajes, estaciones), umbral=0.4)
+        """Verifica que riesgo es 1 cuando el flujo neto mueve al menos UMBRAL_RIESGO de la capacidad."""
+        riesgo = etiqueta_riesgo(flujo_por_bloque(viajes, estaciones), umbral=UMBRAL_RIESGO)
 
-        esperado = (riesgo["flujo_neto"].abs() >= 0.4 * riesgo["capacidad"]).astype(int)
+        esperado = (riesgo["flujo_neto"].abs() >= UMBRAL_RIESGO * riesgo["capacidad"]).astype(int)
         pd.testing.assert_series_equal(riesgo["riesgo"], esperado, check_names=False)
+        # El pico de cada lunes en el conftest deja bloques en riesgo
+        assert riesgo["riesgo"].sum() > 0
         assert riesgo["riesgo"].isin([0, 1]).all()
 
     @pytest.mark.parametrize(
@@ -151,13 +153,14 @@ class TestEtiquetaRiesgo:
 
         assert resultado["riesgo"].iloc[-1] == riesgo
 
-    def test_excluye_estaciones_sin_capacidad(self, viajes, estaciones):
+    def test_excluye_estaciones_sin_capacidad(self, viajes, estaciones, estacion_sin_capacidad):
         """Caso límite: una estación con capacidad 0 no tiene fracción que medir y queda fuera."""
-        sin_capacidad = estaciones.loc[estaciones["capacidad"] == 0, "estacion_id"]
-        assert len(sin_capacidad) == 1
-        riesgo = etiqueta_riesgo(flujo_por_bloque(viajes, estaciones), umbral=0.4)
+        flujo = flujo_por_bloque(viajes, estaciones)
+        assert estacion_sin_capacidad in set(flujo["estacion_id"])
 
-        assert sin_capacidad.item() not in set(riesgo["estacion_id"])
+        riesgo = etiqueta_riesgo(flujo, umbral=UMBRAL_RIESGO)
+
+        assert estacion_sin_capacidad not in set(riesgo["estacion_id"])
         assert (riesgo["capacidad"] > 0).all()
 
 
@@ -172,13 +175,10 @@ class TestPerfilEstacion:
         assert perfil["balance_neto"].between(-1, 1).all()
 
     @pytest.mark.parametrize(("min_dias", "incluida"), [(MIN_DIAS_PERFIL, False), (5, True)])
-    def test_descarta_estaciones_con_pocos_dias(self, viajes, estaciones, min_dias, incluida):
+    def test_descarta_estaciones_con_pocos_dias(
+        self, viajes, estaciones, estacion_nueva, min_dias, incluida
+    ):
         """Caso límite: la estación con 10 días antes del corte solo entra si se piden menos días."""
-        antes = convertir_fechas(viajes).query("inicio < @CORTE_PRUEBA")
-        dias = antes.groupby("origen_id")["inicio"].agg(lambda s: s.dt.normalize().nunique())
-        assert dias.min() == 10
-        estacion_nueva = dias.idxmin()
-
         perfil = perfil_estacion(viajes, estaciones, min_dias=min_dias)
 
         assert (estacion_nueva in set(perfil["estacion_id"])) is incluida

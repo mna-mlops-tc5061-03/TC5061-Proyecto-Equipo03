@@ -1,10 +1,16 @@
 """Valida la calidad de los datos procesados con DeepChecks.
 
 Integridad: corre la suite `data_integrity` sobre los viajes y las estaciones procesados, con
-condiciones explícitas para nulos, duplicados y tipos mezclados. Guarda el reporte HTML de cada
-tabla y un resumen sin filas en `reports/deepchecks/resumen.json`.
+condiciones explícitas para nulos, duplicados y tipos mezclados.
+
+Drift: corre la suite `train_test_validation` sobre las tablas de variables de P1 y P2 y compara
+el periodo de entrenamiento con el de prueba (desde `CORTE_PRUEBA`).
+
+Cada comando guarda el reporte HTML de cada tabla y un resumen sin filas en
+`reports/deepchecks/resumen.json`.
 
 python -m mi_bici.validacion integridad
+python -m mi_bici.validacion drift
 """
 
 import json
@@ -16,11 +22,21 @@ import pandas as pd
 import typer
 
 from mi_bici.config import (
+    COLUMNA_FECHA_P1,
+    COLUMNA_FECHA_P2,
+    CORTE_PRUEBA,
     DEEPCHECKS_DIR,
+    OBJETIVO_P1,
+    OBJETIVO_P2,
     RANGO_TIPOS_MEZCLADOS,
     UMBRAL_CORRELACION,
+    UMBRAL_DRIFT_OBJETIVO,
+    UMBRAL_DRIFT_VARIABLES,
     UMBRAL_DUPLICADOS,
     UMBRAL_NULOS,
+    UMBRAL_RIESGO,
+    VARIABLES_P1,
+    VARIABLES_P2,
 )
 
 app = typer.Typer()
@@ -45,6 +61,38 @@ CHEQUEOS_QUE_SE_QUITAN = (
     "IdentifierLabelCorrelation",
     "OutlierSampleDetection",
 )
+
+
+# Chequeos de train_test_validation que se quitan:
+# - TrainTestSamplesMix usa DataFrame.applymap, que pandas 3 quitó. Siempre termina en error.
+# - MultivariateDrift entrena un modelo con una clase propia que no define __sklearn_tags__, que
+#   scikit-learn 1.9 exige. También termina siempre en error.
+# - IndexTrainTestLeakage necesita un índice por fila y las tablas de variables no lo tienen: la
+#   misma estación aparece en entrenamiento y en prueba a propósito, en otras fechas.
+CHEQUEOS_DRIFT_QUE_SE_QUITAN = (
+    "TrainTestSamplesMix",
+    "MultivariateDrift",
+    "IndexTrainTestLeakage",
+)
+
+# Tablas de variables que se revisan por drift: columnas, objetivo, tipo de objetivo, columna de
+# fecha y variables categóricas (el día, la hora y las banderas no miden una cantidad)
+TABLAS_DRIFT = {
+    "P1": {
+        "variables": VARIABLES_P1,
+        "objetivo": OBJETIVO_P1,
+        "tipo": "regression",
+        "fecha": COLUMNA_FECHA_P1,
+        "categoricas": ["dia_semana", "festivo"],
+    },
+    "P2": {
+        "variables": VARIABLES_P2,
+        "objetivo": OBJETIVO_P2,
+        "tipo": "binary",
+        "fecha": COLUMNA_FECHA_P2,
+        "categoricas": ["hora", "dia_semana", "festivo", "riesgo_semana_anterior"],
+    },
+}
 
 
 def preparar_deepchecks():
@@ -224,6 +272,130 @@ def validar_integridad(df: pd.DataFrame, nombre: str, html: Path | None = None) 
     return resumir(resultado, nombre, len(df), list(df.columns))
 
 
+def separar_por_fecha(
+    tabla: pd.DataFrame, columna_fecha: str, corte: str = CORTE_PRUEBA
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Separa una tabla de variables en entrenamiento (antes de `corte`) y prueba (desde `corte`).
+
+    Es la misma partición que usan los experimentos: el entrenamiento incluye el periodo de
+    validación, porque los dos se conocen antes de la prueba.
+    """
+    fechas = pd.to_datetime(tabla[columna_fecha])
+    return tabla[fechas < corte], tabla[fechas >= corte]
+
+
+def suite_drift():
+    """Arma la suite `train_test_validation` con las condiciones de drift del proyecto.
+
+    Cambia las condiciones por defecto de `FeatureDrift` y `LabelDrift` por los umbrales de
+    `config.py` y quita los chequeos de `CHEQUEOS_DRIFT_QUE_SE_QUITAN`. Los demás (tamaños,
+    categorías y etiquetas nuevas, fuga por fechas y cambio en la relación de cada variable con el
+    objetivo) se quedan con sus condiciones por defecto.
+
+    Returns:
+        La suite lista para correr sobre dos `Dataset` de DeepChecks.
+    """
+    preparar_deepchecks()
+    from deepchecks.tabular.checks import FeatureDrift, LabelDrift
+    from deepchecks.tabular.suites import train_test_validation
+
+    suite = train_test_validation()
+    for indice, chequeo in list(suite.checks.items()):
+        if type(chequeo).__name__ in CHEQUEOS_DRIFT_QUE_SE_QUITAN:
+            suite.remove(indice)
+        elif isinstance(chequeo, FeatureDrift):
+            chequeo.clean_conditions()
+            chequeo.add_condition_drift_score_less_than(
+                max_allowed_categorical_score=UMBRAL_DRIFT_VARIABLES,
+                max_allowed_numeric_score=UMBRAL_DRIFT_VARIABLES,
+            )
+        elif isinstance(chequeo, LabelDrift):
+            chequeo.clean_conditions()
+            chequeo.add_condition_drift_score_less_than(UMBRAL_DRIFT_OBJETIVO)
+    return suite
+
+
+def validar_drift(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    etiqueta: str,
+    categoricas: list[str] | None = None,
+    tipo_etiqueta: str | None = None,
+    fecha: str | None = None,
+    html: Path | None = None,
+) -> dict:
+    """Revisa si los datos de prueba se parecen a los de entrenamiento.
+
+    Args:
+        train: Tabla de entrenamiento con las variables y el objetivo.
+        test: Tabla de prueba con las mismas columnas.
+        etiqueta: Nombre del objetivo. Su cambio lo mide `LabelDrift`; el de las demás columnas,
+            `FeatureDrift`.
+        categoricas: Variables categóricas. Si es `None`, DeepChecks las infiere.
+        tipo_etiqueta: `"regression"`, `"binary"` o `"multiclass"`. Si es `None`, se infiere.
+        fecha: Columna de fecha. Sirve para revisar que la prueba sea posterior al entrenamiento.
+        html: Ruta donde guardar el reporte HTML. Si es `None` no se guarda.
+
+    Returns:
+        El resumen de `resumir`, más el puntaje de drift de cada variable y del objetivo, y la
+        media del objetivo en cada conjunto (para P2 es la tasa de riesgo).
+    """
+    dc_tabular = preparar_deepchecks()
+
+    def dataset(tabla: pd.DataFrame):
+        return dc_tabular.Dataset(
+            tabla,
+            label=etiqueta,
+            label_type=tipo_etiqueta,
+            cat_features=categoricas,
+            datetime_name=fecha,
+            set_index_from_dataframe_index=False,
+        )
+
+    resultado = suite_drift().run(train_dataset=dataset(train), test_dataset=dataset(test))
+    if html is not None:
+        html.parent.mkdir(parents=True, exist_ok=True)
+        resultado.save_as_html(str(html), as_widget=False)
+
+    resumen = resumir(resultado, etiqueta, len(train) + len(test), list(train.columns))
+    resumen["filas_entrenamiento"], resumen["filas_prueba"] = len(train), len(test)
+    resumen["objetivo"] = {
+        "nombre": etiqueta,
+        "media_entrenamiento": float(train[etiqueta].mean()),
+        "media_prueba": float(test[etiqueta].mean()),
+    }
+    resumen["drift"] = {}
+    for chequeo in resultado.results:
+        valor = getattr(chequeo, "value", None)
+        if chequeo.get_header() == "Feature Drift" and isinstance(valor, dict):
+            for columna, datos in valor.items():
+                resumen["drift"][columna] = _puntaje(datos)
+        elif chequeo.get_header() == "Label Drift" and isinstance(valor, dict):
+            resumen["drift"][etiqueta] = _puntaje(valor)
+    return resumen
+
+
+def _puntaje(datos: dict) -> dict:
+    """Puntaje y método de drift de una columna, redondeados para el resumen."""
+    puntaje = datos.get("Drift score")
+    return {
+        "puntaje": None if puntaje is None else round(float(puntaje), 4),
+        "metodo": datos.get("Method"),
+    }
+
+
+def tablas_de_variables() -> dict[str, pd.DataFrame]:
+    """Construye las tablas de variables de P1 y P2 con los datos procesados."""
+    from mi_bici.dataset import load_processed_stations, load_processed_travels
+    from mi_bici.features import demanda_diaria, etiqueta_riesgo, flujo_por_bloque
+
+    viajes, estaciones = load_processed_travels(), load_processed_stations()
+    return {
+        "P1": demanda_diaria(viajes, estaciones),
+        "P2": etiqueta_riesgo(flujo_por_bloque(viajes, estaciones), UMBRAL_RIESGO),
+    }
+
+
 def guardar_resumen(seccion: str, contenido: dict, ruta: Path = RESUMEN_FILE) -> None:
     """Guarda una sección del resumen y conserva las demás que ya estén en el archivo."""
     resumen = json.loads(ruta.read_text(encoding="utf-8")) if ruta.exists() else {}
@@ -252,6 +424,35 @@ def integridad() -> None:
         for condicion in resultados[nombre]["no_pasaron"]:
             logger.warning(f"{nombre}: {condicion['condicion']} -> {condicion['detalle']}")
     guardar_resumen("integridad", resultados)
+    logger.success(f"Resumen guardado en {RESUMEN_FILE}")
+
+
+@app.command()
+def drift() -> None:
+    """Compara entrenamiento y prueba en las tablas de P1 y P2 y guarda el HTML y el resumen."""
+    resultados = {}
+    for pregunta, tabla in tablas_de_variables().items():
+        cfg = TABLAS_DRIFT[pregunta]
+        columnas = [cfg["fecha"], *cfg["variables"], cfg["objetivo"]]
+        train, test = separar_por_fecha(tabla[columnas], cfg["fecha"])
+        logger.info(f"Revisando drift de {pregunta}: {len(train):,} filas contra {len(test):,}")
+        resultados[pregunta] = validar_drift(
+            train,
+            test,
+            cfg["objetivo"],
+            categoricas=cfg["categoricas"],
+            tipo_etiqueta=cfg["tipo"],
+            fecha=cfg["fecha"],
+            html=DEEPCHECKS_DIR / f"drift_{pregunta.lower()}.html",
+        )
+        objetivo = resultados[pregunta]["objetivo"]
+        logger.info(
+            f"{pregunta}: media de {objetivo['nombre']} {objetivo['media_entrenamiento']:.4f} en "
+            f"entrenamiento y {objetivo['media_prueba']:.4f} en prueba"
+        )
+        for condicion in resultados[pregunta]["no_pasaron"]:
+            logger.warning(f"{pregunta}: {condicion['condicion']} -> {condicion['detalle']}")
+    guardar_resumen("drift", resultados)
     logger.success(f"Resumen guardado en {RESUMEN_FILE}")
 
 

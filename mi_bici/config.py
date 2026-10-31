@@ -129,6 +129,12 @@ UMBRAL_DUPLICADOS = 0.01
 RANGO_TIPOS_MEZCLADOS = (0.01, 0.10)
 # Dos columnas con correlación mayor a 0.9 dicen casi lo mismo (valor por defecto de DeepChecks)
 UMBRAL_CORRELACION = 0.9
+# Drift entre entrenamiento y prueba (DeepChecks). Una variable cambió si su puntaje (Kolmogorov-
+# Smirnov para numéricas, V de Cramér para categóricas) llega a 0.2, el límite habitual en la
+# industria. El objetivo se revisa con 0.15, más estricto, porque si cambia el objetivo cambia lo
+# que el modelo tiene que predecir. Son los valores por defecto de DeepChecks
+UMBRAL_DRIFT_VARIABLES = 0.2
+UMBRAL_DRIFT_OBJETIVO = 0.15
 
 # Días de descanso obligatorio (art. 74 de la Ley Federal del Trabajo) dentro del periodo
 FESTIVOS = [

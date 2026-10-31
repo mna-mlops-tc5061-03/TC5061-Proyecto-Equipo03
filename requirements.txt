@@ -14,4 +14,7 @@ matplotlib==3.11.2
 jupyter==1.1.1
 requests==2.32.5
 pytest==9.1.1
+# Validación de datos. setuptools<81 porque DeepChecks 0.19.1 usa pkg_resources
+deepchecks==0.19.1
+setuptools<81
 -e .

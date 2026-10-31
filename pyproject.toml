@@ -21,7 +21,7 @@ requires-python = "~=3.13.0"
 [tool.ruff]
 line-length = 99
 src = ["mi_bici"]
-include = ["pyproject.toml", "mi_bici/**/*.py"]
+include = ["pyproject.toml", "mi_bici/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # Add import sorting
@@ -30,3 +30,6 @@ extend-select = ["I"]  # Add import sorting
 known-first-party = ["mi_bici"]
 force-sort-within-sections = true
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["lento: levanta MLflow o entrena con muchos datos. make test-fast las salta"]

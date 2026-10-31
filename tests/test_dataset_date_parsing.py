@@ -1,7 +1,6 @@
 # pyrefly: ignore[missing-import]
 import numpy as np
 import pandas as pd
-import pytest
 
 from mi_bici.dataset import parse_datetime_series
 
@@ -70,8 +69,8 @@ class TestDateParsing:
         result = parse_datetime_series(series)
 
         assert result.iloc[0].year == 2020
-        assert result.iloc[0].month == 1   # Debe ser Enero
-        assert result.iloc[0].day == 2     # Debe ser día 2
+        assert result.iloc[0].month == 1  # Debe ser Enero
+        assert result.iloc[0].day == 2  # Debe ser día 2
 
     def test_slash_respects_day_first(self):
         """Garantiza que formato con plecas interprete día primero (DD/MM/YYYY)."""
@@ -80,8 +79,8 @@ class TestDateParsing:
         result = parse_datetime_series(series)
 
         assert result.iloc[0].year == 2023
-        assert result.iloc[0].month == 1   # Enero
-        assert result.iloc[0].day == 2     # Día 2
+        assert result.iloc[0].month == 1  # Enero
+        assert result.iloc[0].day == 2  # Día 2
 
     def test_null_values_handling(self):
         """Verifica que valores nulos o None se conviertan a pd.NaT sin fallar."""

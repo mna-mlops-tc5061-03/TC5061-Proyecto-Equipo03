@@ -46,6 +46,12 @@ test:
 	pytest tests/
 
 
+## Corre las pruebas sin las marcadas como lentas, que levantan MLflow
+.PHONY: test-fast
+test-fast:
+	pytest -m "not lento"
+
+
 ## Set up Python interpreter environment
 .PHONY: create_environment
 create_environment:

@@ -107,6 +107,13 @@ registry:
 	$(PYTHON_INTERPRETER) -m mi_bici.modeling.registry
 
 
+## Valida los datos procesados con DeepChecks: integridad y drift entre entrenamiento y prueba
+.PHONY: validar-datos
+validar-datos:
+	$(PYTHON_INTERPRETER) -m mi_bici.validacion integridad
+	$(PYTHON_INTERPRETER) -m mi_bici.validacion drift
+
+
 ## Make dataset
 .PHONY: data
 data: requirements

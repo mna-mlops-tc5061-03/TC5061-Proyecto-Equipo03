@@ -119,6 +119,7 @@ make train             # registra el baseline y los candidatos de P1, P2 y P3 si
 make experimentos      # corre con mlflow run las 18 corridas de la entrega (usa el .env)
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
 make test              # corre las pruebas de tests/
+make test-fast         # corre las pruebas sin las lentas, que levantan MLflow
 make lint              # revisa el formato del código
 ```
 
@@ -224,7 +225,7 @@ silueta, y hay que repetir este cambio de alias.
 | Código en módulos | Los notebooks solo exploran; la lógica vive en `mi_bici/` |
 | Registro de experimentos | Todos los runs se registran en MLflow con los mismos parámetros, métricas y etiquetas |
 | Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
-| Pruebas y estilo | Pruebas unitarias en `tests/` y formato revisado con ruff |
+| Pruebas y estilo | Pruebas unitarias en `tests/` y formato del código y de las pruebas revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
 | Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
@@ -253,9 +254,9 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb
 ├── references/              # ML Canvas, diagramas y referencias
 ├── reports/                 # reporte de la propuesta y figures/
-├── tests/                   # pruebas unitarias
+├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make experimentos, make registry, make test, make lint
+├── Makefile                 # make data, make train, make experimentos, make registry, make test, make test-fast, make lint
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking

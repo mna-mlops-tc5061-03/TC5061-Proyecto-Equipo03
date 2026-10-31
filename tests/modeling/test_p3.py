@@ -1,7 +1,6 @@
+from loguru import logger
 import numpy as np
 import pandas as pd
-
-from loguru import logger
 from sklearn.cluster import Birch
 from sklearn.mixture import GaussianMixture
 from sklearn.pipeline import Pipeline
@@ -10,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from mi_bici.config import K_CANDIDATOS
 from mi_bici.features import VARIABLES_PERFIL_USO
 from mi_bici.modeling.p3_grupos import ExperimentoGrupos
+
 
 class TestTrainP3:
     def test_catalogo_p3_contiene_modelos_requeridos(self):
@@ -58,7 +58,7 @@ class TestTrainP3:
         experimento.k = 5
         experimento.k_en_borde = experimento.k in (min(K_CANDIDATOS), max(K_CANDIDATOS))
         assert experimento.etiquetas()["k_en_borde"] == "False"
-    
+
     def test_entrenar_marca_k_en_borde(self):
         """Verifica que entrenar() marca k_en_borde y avisa en el log cuando k es el menor del rango."""
         rng = np.random.default_rng(0)
@@ -76,4 +76,3 @@ class TestTrainP3:
 
         assert experimento.etiquetas()["k_en_borde"] == "True"
         assert any("borde" in aviso for aviso in avisos)
-        

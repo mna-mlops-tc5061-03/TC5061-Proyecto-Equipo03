@@ -413,7 +413,7 @@ def clean_data_travels(df: pd.DataFrame) -> pd.DataFrame:
 
 def compute_file_md5(file_path: Path) -> str:
     """Calcula el hash MD5 de un archivo leyendo en bloques binarios."""
-    hasher = hashlib.md5()
+    hasher = hashlib.md5(usedforsecurity=False)
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
             hasher.update(chunk)
@@ -479,7 +479,7 @@ def generate_parquet_metadata(target: Path, output_json: Path | None = None) -> 
         total_size = 0
         total_rows = 0
         columns = []
-        combined_hasher = hashlib.md5()
+        combined_hasher = hashlib.md5(usedforsecurity=False)
         all_row_hashes = []
 
         for pfile in parquet_files:

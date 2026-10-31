@@ -36,3 +36,6 @@ jobs:
 
       - name: Ejecutar pruebas unitarias (Test)
         run: make test
+
+      - name: Revisar seguridad del código y dependencias
+        run: make seguridad

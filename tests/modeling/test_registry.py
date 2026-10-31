@@ -14,7 +14,11 @@ from mi_bici.modeling.registry import (
     registrar,
 )
 
-PARTICION = {"data_version": "abc123", "corte_validacion": "2026-06-01", "corte_prueba": "2026-08-01"}
+PARTICION = {
+    "data_version": "abc123",
+    "corte_validacion": "2026-06-01",
+    "corte_prueba": "2026-08-01",
+}
 COMMIT = "0123456789abcdef"
 
 
@@ -47,7 +51,9 @@ def correr(etapa, val_mae, test_mae):
     """Registra un run de P1. Los candidatos guardan un modelo con ejemplo de entrada."""
     X = pd.DataFrame({"viajes_lag_7": [1.0, 2.0, 3.0, 4.0], "capacidad": [10.0, 12.0, 10.0, 12.0]})
     with mlflow.start_run() as run:
-        mlflow.set_tags({"question": "P1", "stage_of_work": etapa, "git_dirty": "False", "git_commit": COMMIT})
+        mlflow.set_tags(
+            {"question": "P1", "stage_of_work": etapa, "git_dirty": "False", "git_commit": COMMIT}
+        )
         mlflow.log_params(PARTICION)
         mlflow.log_metrics({"val_mae": val_mae, "test_mae": test_mae})
         if etapa == "candidate":
@@ -123,6 +129,7 @@ class TestRegistry:
         with pytest.raises(ValueError, match="no hay un baseline"):
             elegir(sin_runs, "P1")
 
+    @pytest.mark.lento
     def test_registra_champion_y_challenger_con_linaje(self, experimento):
         """Verifica los aliases, el linaje en las etiquetas y que el champion carga y predice."""
         correr("baseline", 6.9, 6.9)
@@ -147,6 +154,7 @@ class TestRegistry:
         assert resumen["mejora"] == pytest.approx((6.9 - 5.0) / 6.9)
         assert comprobar_carga(nombre) == 3
 
+    @pytest.mark.lento
     def test_volver_a_registrar_no_repite_versiones(self, experimento):
         """Verifica que correr el registro dos veces reutiliza la versión del mismo run."""
         correr("baseline", 6.9, 6.9)

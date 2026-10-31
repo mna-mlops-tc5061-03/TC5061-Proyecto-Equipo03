@@ -9,7 +9,12 @@ def viajes():
     return pd.DataFrame(
         {
             "genero": ["M", "F", "NE", "M"],
-            "inicio": ["2025-10-01 08:00:00", "2025-10-01 09:30:00", "2025-11-02 18:00:00", "2025-11-03 07:15:00"],
+            "inicio": [
+                "2025-10-01 08:00:00",
+                "2025-10-01 09:30:00",
+                "2025-11-02 18:00:00",
+                "2025-11-03 07:15:00",
+            ],
             "origen_id": [10, 20, 10, 30],
             "nacimiento": pd.array([1990, None, 1985, 2001], dtype="Int64"),
             "duracion_min": [12.5, 30.0, 8.25, 15.0],
@@ -21,7 +26,9 @@ def viajes():
 
 def ingesta(carpeta, compresion, semilla):
     """Escribe estaciones y viajes con otra compresión y otro orden de filas, como otra computadora."""
-    estaciones = pd.DataFrame({"estacion_id": [1, 2, 3], "nombre": ["A", "B", "C"], "capacidad": [15, 19, 12]})
+    estaciones = pd.DataFrame(
+        {"estacion_id": [1, 2, 3], "nombre": ["A", "B", "C"], "capacidad": [15, 19, 12]}
+    )
     estaciones.sample(frac=1, random_state=semilla).to_parquet(
         carpeta / "estaciones.parquet", index=False, compression=compresion
     )
@@ -95,5 +102,12 @@ class TestManifest:
         for tabla in ("estaciones", "viajes"):
             assert "content_hash" in datos[tabla]
             assert not {"md5", "size_bytes", "total_size_bytes"} & set(datos[tabla])
-        assert [f["partition"] for f in datos["viajes"]["files"]] == ["anio=2025/mes=10", "anio=2025/mes=11"]
-        assert sum(f["num_rows"] for f in datos["viajes"]["files"]) == datos["viajes"]["total_rows"] == 4
+        assert [f["partition"] for f in datos["viajes"]["files"]] == [
+            "anio=2025/mes=10",
+            "anio=2025/mes=11",
+        ]
+        assert (
+            sum(f["num_rows"] for f in datos["viajes"]["files"])
+            == datos["viajes"]["total_rows"]
+            == 4
+        )

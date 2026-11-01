@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from loguru import logger
+import numpy as np
 import pandas as pd
 from sklearn.cluster import Birch, KMeans
 from sklearn.metrics import silhouette_score
@@ -11,7 +12,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 
 from mi_bici import plots
-from mi_bici.config import K_CANDIDATOS
+from mi_bici.config import K_CANDIDATOS, SEMILLAS_ESTABILIDAD
 from mi_bici.dataset import load_processed_stations, load_processed_travels
 from mi_bici.features import VARIABLES_PERFIL_USO, perfil_estacion
 from mi_bici.modeling.base import ExperimentoBase, Modelo
@@ -107,14 +108,52 @@ class ExperimentoGrupos(ExperimentoBase):
     def evaluar(self, datos, prefijo: str) -> dict:
         """Asigna los grupos y mide su separación. El baseline agrupa por municipio.
 
+        En los candidatos (salvo los hijos de la búsqueda) mide además la estabilidad de la
+        silueta y el tamaño del grupo menor al ajustar con `SEMILLAS_ESTABILIDAD`.
+
         Returns:
-            `<prefijo>_silhouette`, `<prefijo>_davies_bouldin` y `<prefijo>_calinski_harabasz`.
+            `<prefijo>_silhouette`, `<prefijo>_davies_bouldin`, `<prefijo>_calinski_harabasz` y,
+            en los candidatos, `<prefijo>_silhouette_std` y `<prefijo>_grupo_menor_min`.
         """
+        if not hasattr(self, "perfil") or self.perfil is None:
+            self.perfil = datos.copy()
         if self.modelo is None:
             self.perfil["grupo"] = datos["municipio"]
         else:
             self.perfil["grupo"] = self.modelo.predict(datos[VARIABLES_PERFIL_USO])
-        return metricas_clustering(self.X_escalado, self.perfil["grupo"], prefijo)
+        metricas = metricas_clustering(self.X_escalado, self.perfil["grupo"], prefijo)
+        if self.modelo is not None and self.etapa != "search":
+            metricas |= self.estabilidad(datos, prefijo)
+        return metricas
+
+    def estabilidad(self, datos, prefijo: str = "train") -> dict:
+        """Mide la estabilidad con `SEMILLAS_ESTABILIDAD` para el `k` elegido.
+
+        Birch no usa semilla, así que su desviación es `0.0`.
+        """
+        usa_semilla = (
+            self.entrada.clase is not None and "random_state" in self.entrada.clase().get_params()
+        )
+        if not usa_semilla:
+            grupos = self.perfil["grupo"]
+            _, conteos = np.unique(grupos, return_counts=True)
+            return {
+                f"{prefijo}_silhouette_std": 0.0,
+                f"{prefijo}_grupo_menor_min": float(conteos.min() / len(grupos)),
+            }
+
+        param_k = self._param_k()
+        siluetas, menores = [], []
+        for semilla in SEMILLAS_ESTABILIDAD:
+            modelo = self.crear_modelo(**{param_k: self.k, "random_state": semilla})
+            grupos = modelo.fit_predict(datos[VARIABLES_PERFIL_USO])
+            siluetas.append(silhouette_score(self.X_escalado, grupos))
+            _, conteos = np.unique(grupos, return_counts=True)
+            menores.append(conteos.min() / len(grupos))
+        return {
+            f"{prefijo}_silhouette_std": float(np.std(siluetas)),
+            f"{prefijo}_grupo_menor_min": float(min(menores)),
+        }
 
     def artefactos(self, carpeta: Path) -> list[Path]:
         """Guarda el mapa, el perfil horario, el grupo de cada estación y el resumen por grupo.

@@ -120,10 +120,12 @@ def estado_git() -> dict:
         Diccionario con `git_commit` (o `"sin_git"`) y `git_dirty` (`"True"` o `"False"`).
     """
 
+    # bandit avisa por subprocess, pero aquí se llama a git sin shell y con argumentos del código
     def git(*args):
-        return subprocess.run(
+        resultado = subprocess.run(  # nosec B603 B607
             ["git", *args], check=False, cwd=PROJ_ROOT, capture_output=True, text=True
-        ).stdout.strip()
+        )
+        return resultado.stdout.strip()
 
     return {
         "git_commit": git("rev-parse", "HEAD") or "sin_git",
@@ -178,7 +180,9 @@ class ExperimentoBase(ABC):
         """
         params = {**self.params, **extra}
         if "random_state" in self.entrada.clase().get_params():
-            params["random_state"] = self.semilla
+            params["random_state"] = extra.get("random_state", self.semilla)
+        else:
+            params.pop("random_state", None)
         estimador = self.entrada.clase(**params)
         if self.entrada.escalar:
             return Pipeline([("escalado", StandardScaler()), ("modelo", estimador)])

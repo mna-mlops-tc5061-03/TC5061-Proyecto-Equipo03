@@ -46,6 +46,19 @@ test:
 	pytest tests/
 
 
+## Corre las pruebas sin las marcadas como lentas, que levantan MLflow
+.PHONY: test-fast
+test-fast:
+	pytest -m "not lento"
+
+
+## Revisa el código con bandit y las dependencias con pip-audit
+.PHONY: security
+security:
+	bandit -r mi_bici -c pyproject.toml -q
+	pip-audit -r requirements.txt
+
+
 ## Set up Python interpreter environment
 .PHONY: create_environment
 create_environment:

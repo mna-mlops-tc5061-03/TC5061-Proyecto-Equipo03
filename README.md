@@ -120,7 +120,9 @@ make train             # registra el baseline y los candidatos de P1, P2 y P3 si
 make experimentos      # corre con mlflow run las 18 corridas de la entrega (usa el .env)
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
 make test              # corre las pruebas de tests/
+make test-fast         # corre las pruebas sin las lentas, que levantan MLflow
 make lint              # revisa el formato del código
+make security          # revisa el código con bandit y las dependencias con pip-audit
 ```
 
 ### Validación de datos con DeepChecks
@@ -231,23 +233,12 @@ predicciones = modelo.predict(X)  # X con las columnas de la firma del modelo
 MLflow 2.9. Un alias apunta a una versión: quien usa el modelo siempre carga `@champion`, y
 promover una versión nueva o regresar a la anterior es solo mover el alias, sin cambiar código.
 
-**Cambio de champion en P3.** `make registry` propone el `champion` con la métrica de selección y
-el equipo revisa la estabilidad y el costo antes de aceptarlo. En P3 propuso `gmm` por su silueta,
-pero con distintas semillas su silueta y el tamaño de sus grupos cambian mucho y deja hasta el 96 %
-de las estaciones en un solo grupo, así que el `champion` pasó a la versión de `kmeans`:
-
-```python
-from mlflow import MlflowClient
-
-cliente = MlflowClient()
-cliente.set_registered_model_alias("mibici-equipo03-p3-grupos", "champion", 2)    # kmeans
-cliente.set_registered_model_alias("mibici-equipo03-p3-grupos", "challenger", 1)  # gmm
-```
-
-Los números de versión son los de la corrida oficial; en otra corrida hay que revisarlos en la UI.
-
-Si se vuelve a correr `make registry`, el `champion` de P3 regresa a `gmm`, porque elige por
-silueta, y hay que repetir este cambio de alias.
+**Criterio de estabilidad en P3.** En P3 no basta con tener la mayor silueta: con distintas
+semillas, `gmm` varía mucho (`train_silhouette_std` de `0.033`) y llega a dejar grupos de una sola
+estación y hasta el 96 % de las estaciones en un solo grupo. Por eso `make registry` aplica además
+`CRITERIOS_ESTABILIDAD` de `config.py` (`train_silhouette_std <= 0.01` y
+`train_grupo_menor_min >= 0.05` en las 10 semillas de `SEMILLAS_ESTABILIDAD`) y elige un `champion`
+estable en P3 sin mover el alias a mano.
 
 ## Buenas prácticas aplicadas
 
@@ -259,7 +250,7 @@ silueta, y hay que repetir este cambio de alias.
 | Código en módulos | Los notebooks solo exploran; la lógica vive en `mi_bici/` |
 | Registro de experimentos | Todos los runs se registran en MLflow con los mismos parámetros, métricas y etiquetas |
 | Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
-| Pruebas y estilo | Pruebas unitarias en `tests/` y formato revisado con ruff |
+| Pruebas y estilo | Pruebas unitarias en `tests/` y formato del código y de las pruebas revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
 | Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
@@ -289,14 +280,14 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb
 ├── references/              # ML Canvas, diagramas y referencias
 ├── reports/                 # reporte de la propuesta y figures/
-├── tests/                   # pruebas unitarias
+├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make experimentos, make registry, make test, make lint
+├── Makefile                 # make data, make train, make experimentos, make registry, make test, make test-fast, make lint, make security
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking
 ├── requirements.txt         # dependencias con versiones fijas
-└── pyproject.toml           # metadatos del paquete y configuración de ruff
+└── pyproject.toml           # metadatos del paquete y configuración de ruff y bandit
 ```
 
 `.gitignore` excluye los datos de MiBici, `mlflow.db`, `mlruns/`, `mlartifacts/`, `.env`, los

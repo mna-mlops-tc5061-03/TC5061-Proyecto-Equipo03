@@ -8,13 +8,18 @@ from mi_bici.config import ALIAS_PRODUCCION, ALIAS_RESPALDO, EXPERIMENT_NAME, MO
 from mi_bici.modeling.registry import (
     buscar_runs,
     comprobar_carga,
+    describir_version,
     elegir,
     mejora,
     metrica_prueba,
     registrar,
 )
 
-PARTICION = {"data_version": "abc123", "corte_validacion": "2026-06-01", "corte_prueba": "2026-08-01"}
+PARTICION = {
+    "data_version": "abc123",
+    "corte_validacion": "2026-06-01",
+    "corte_prueba": "2026-08-01",
+}
 COMMIT = "0123456789abcdef"
 
 
@@ -47,7 +52,9 @@ def correr(etapa, val_mae, test_mae):
     """Registra un run de P1. Los candidatos guardan un modelo con ejemplo de entrada."""
     X = pd.DataFrame({"viajes_lag_7": [1.0, 2.0, 3.0, 4.0], "capacidad": [10.0, 12.0, 10.0, 12.0]})
     with mlflow.start_run() as run:
-        mlflow.set_tags({"question": "P1", "stage_of_work": etapa, "git_dirty": "False", "git_commit": COMMIT})
+        mlflow.set_tags(
+            {"question": "P1", "stage_of_work": etapa, "git_dirty": "False", "git_commit": COMMIT}
+        )
         mlflow.log_params(PARTICION)
         mlflow.log_metrics({"val_mae": val_mae, "test_mae": test_mae})
         if etapa == "candidate":
@@ -85,14 +92,69 @@ class TestRegistry:
         runs = pd.DataFrame(
             [
                 fila("base", "baseline", pregunta="P3", train_silhouette=0.02),
-                fila("peor", "candidate", pregunta="P3", train_silhouette=0.01),
-                fila("kmeans", "candidate", pregunta="P3", train_silhouette=0.10),
+                fila(
+                    "peor",
+                    "candidate",
+                    pregunta="P3",
+                    train_silhouette=0.01,
+                    train_silhouette_std=0.001,
+                    train_grupo_menor_min=0.13,
+                ),
+                fila(
+                    "kmeans",
+                    "candidate",
+                    pregunta="P3",
+                    train_silhouette=0.10,
+                    train_silhouette_std=0.001,
+                    train_grupo_menor_min=0.13,
+                ),
             ]
         )
 
         _, aceptados = elegir(runs, "P3")
 
         assert list(aceptados.run_id) == ["kmeans"]
+
+    def test_p3_descarta_candidato_inestable_aunque_tenga_mejor_silueta(self):
+        """Verifica que un candidato con mejor silueta pero inestable se descarta en P3."""
+        runs = pd.DataFrame(
+            [
+                fila("base", "baseline", pregunta="P3", train_silhouette=0.02),
+                fila(
+                    "gmm_std_alta",
+                    "candidate",
+                    pregunta="P3",
+                    train_silhouette=0.35,
+                    train_silhouette_std=0.033,
+                    train_grupo_menor_min=0.10,
+                ),
+                fila(
+                    "gmm_grupo_chico",
+                    "candidate",
+                    pregunta="P3",
+                    train_silhouette=0.26,
+                    train_silhouette_std=0.005,
+                    train_grupo_menor_min=0.002,
+                ),
+                fila(
+                    "kmeans",
+                    "candidate",
+                    pregunta="P3",
+                    train_silhouette=0.10,
+                    train_silhouette_std=0.001,
+                    train_grupo_menor_min=0.13,
+                ),
+            ]
+        )
+
+        base, aceptados = elegir(runs, "P3")
+
+        assert list(aceptados.run_id) == ["kmeans"]
+        assert "pasó el criterio de estabilidad" in describir_version(
+            aceptados.iloc[0], base, "P3"
+        )
+        with pytest.raises(ValueError, match="criterio de estabilidad.*make experimentos"):
+            registrar("P3", runs[runs.run_id != "kmeans"], None)
 
     def test_solo_compara_runs_limpios_con_los_mismos_datos(self):
         """Verifica que se ignoran los runs con cambios sin guardar, de otros datos o de otra pregunta."""
@@ -123,6 +185,7 @@ class TestRegistry:
         with pytest.raises(ValueError, match="no hay un baseline"):
             elegir(sin_runs, "P1")
 
+    @pytest.mark.lento
     def test_registra_champion_y_challenger_con_linaje(self, experimento):
         """Verifica los aliases, el linaje en las etiquetas y que el champion carga y predice."""
         correr("baseline", 6.9, 6.9)
@@ -147,6 +210,7 @@ class TestRegistry:
         assert resumen["mejora"] == pytest.approx((6.9 - 5.0) / 6.9)
         assert comprobar_carga(nombre) == 3
 
+    @pytest.mark.lento
     def test_volver_a_registrar_no_repite_versiones(self, experimento):
         """Verifica que correr el registro dos veces reutiliza la versión del mismo run."""
         correr("baseline", 6.9, 6.9)

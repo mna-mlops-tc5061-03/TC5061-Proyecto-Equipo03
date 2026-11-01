@@ -163,7 +163,8 @@ def resumir(resultado, nombre: str, filas: int, columnas: list[str]) -> dict:
         Diccionario con cada condición (pasa, advertencia o falla y su detalle), los chequeos que
         no se pudieron correr y la lista de condiciones que no pasaron.
     """
-    estados = {"PASS": "pasa", "WARN": "advertencia", "FAIL": "falla", "ERROR": "error"}
+    # bandit confunde "pasa" con una contraseña escrita en el código
+    estados = {"PASS": "pasa", "WARN": "advertencia", "FAIL": "falla", "ERROR": "error"}  # nosec B105
     condiciones, no_corrieron = [], []
     for chequeo in resultado.results:
         if not hasattr(chequeo, "conditions_results"):

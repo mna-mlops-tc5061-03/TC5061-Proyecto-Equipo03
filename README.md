@@ -124,6 +124,28 @@ make lint              # revisa el formato del código
 make security          # revisa el código con bandit y las dependencias con pip-audit
 ```
 
+### Validación de datos con DeepChecks
+
+Con los datos procesados, este comando revisa la integridad de los viajes y de las estaciones:
+
+```bash
+python -m mi_bici.validacion integridad
+```
+
+Corre la suite `data_integrity` de DeepChecks con condiciones explícitas, definidas en
+`config.py`: a lo más 5 % de nulos por columna, a lo más 1 % de filas duplicadas y ninguna
+columna con entre 1 % y 10 % de valores de otro tipo. También revisa columnas con un solo valor,
+caracteres especiales, formas distintas de nulo, variantes de un mismo texto, longitudes de texto
+atípicas y columnas muy correlacionadas.
+
+Deja en `reports/deepchecks/` un HTML por tabla y `resumen.json`, con cada condición, si pasó y
+por qué. La carpeta no se versiona porque el HTML muestra filas de ejemplo; el resumen solo trae
+conteos y resultados. `tests/test_validacion.py` prueba la validación con datos sintéticos, así
+que corre en el CI sin los datos de MiBici.
+
+DeepChecks 0.19.1 es de diciembre de 2024 y no soporta numpy 2 ni scikit-learn 1.9.
+`preparar_deepchecks()` en `mi_bici/validacion.py` agrega lo que le falta antes de importarlo.
+
 ## Configuración
 
 Todo lo que define una ejecución vive en `mi_bici/config.py`: rutas, URLs de los datos, periodo y
@@ -230,6 +252,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── dataset.py           # ingesta: descarga, limpieza, Parquet y manifiesto
 │   ├── features.py          # variables de P1, P2 y P3, sin información del futuro
 │   ├── plots.py             # gráficas que se registran como artefactos
+│   ├── validacion.py        # validación de los datos con DeepChecks
 │   └── modeling/
 │       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow
 │       ├── evaluate.py      # métricas por tipo de tarea (val_*, test_*, train_*)
@@ -254,8 +277,8 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 └── pyproject.toml           # metadatos del paquete y configuración de ruff y bandit
 ```
 
-`.gitignore` excluye los datos de MiBici, `mlflow.db`, `mlruns/`, `mlartifacts/`, `.env` y los
-modelos serializados. De `data/` solo se versiona `data/manifest.json`, la versión de los datos.
+`.gitignore` excluye los datos de MiBici, `mlflow.db`, `mlruns/`, `mlartifacts/`, `.env`, los
+modelos serializados y los reportes de DeepChecks. De `data/` solo se versiona `data/manifest.json`, la versión de los datos.
 
 ## Flujo de trabajo
 

@@ -21,6 +21,8 @@ MODELS_DIR = PROJ_ROOT / "models"
 
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
+# Reportes de DeepChecks. El HTML muestra filas de ejemplo, por eso la carpeta no va a Git
+DEEPCHECKS_DIR = REPORTS_DIR / "deepchecks"
 
 # Salidas de la ingesta. El manifiesto es lo único de data/ que se versiona en Git
 VIAJES_DIR = PROCESSED_DATA_DIR / "viajes"
@@ -129,6 +131,17 @@ ANIO_NACIMIENTO_MINIMO = 1920
 
 # Maximo umbral de filas a remover, en caso de ser mayor se deja un log error para su atencion
 UMBRAL_FILAS_A_REMOVER = 0.05
+
+# Validación de integridad con DeepChecks sobre los datos procesados. Los nulos usan el mismo 5 %
+# que la limpieza tolera perder. Los viajes procesados ya no tienen viaje_id, así que dos filas
+# iguales pueden ser dos personas que salen juntas; más de 1 % ya no se explica así. Una columna
+# con entre 1 % y 10 % de valores de otro tipo suele ser un error de captura: menos es ruido y
+# más indica que la columna tiene dos tipos a propósito
+UMBRAL_NULOS = 0.05
+UMBRAL_DUPLICADOS = 0.01
+RANGO_TIPOS_MEZCLADOS = (0.01, 0.10)
+# Dos columnas con correlación mayor a 0.9 dicen casi lo mismo (valor por defecto de DeepChecks)
+UMBRAL_CORRELACION = 0.9
 
 # Días de descanso obligatorio (art. 74 de la Ley Federal del Trabajo) dentro del periodo
 FESTIVOS = [

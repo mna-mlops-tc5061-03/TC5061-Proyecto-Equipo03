@@ -16,4 +16,7 @@ requests==2.33.0
 pytest==9.1.1
 bandit==1.9.4
 pip-audit==2.10.1
+# Validación de datos. setuptools<81 porque DeepChecks 0.19.1 usa pkg_resources
+deepchecks==0.19.1
+setuptools<81
 -e .

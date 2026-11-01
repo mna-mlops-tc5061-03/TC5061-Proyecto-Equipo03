@@ -76,3 +76,56 @@ class TestTrainP3:
 
         assert experimento.etiquetas()["k_en_borde"] == "True"
         assert any("borde" in aviso for aviso in avisos)
+
+    def test_candidatos_registran_estabilidad_y_baseline_no(self):
+        """Verifica que kmeans, birch y gmm registran las dos métricas de estabilidad y baseline no."""
+        rng = np.random.default_rng(42)
+        datos = pd.DataFrame(
+            rng.normal(size=(40, len(VARIABLES_PERFIL_USO))), columns=VARIABLES_PERFIL_USO
+        )
+        datos["municipio"] = ["GDL", "ZAP", "TLA", "TLQ"] * 10
+        X_escalado = StandardScaler().fit_transform(datos[VARIABLES_PERFIL_USO])
+
+        base = ExperimentoGrupos("baseline")
+        base.X_escalado = X_escalado
+        metricas_base = base.evaluar(datos, "train")
+        assert "train_silhouette_std" not in metricas_base
+        assert "train_grupo_menor_min" not in metricas_base
+
+        for clave in ("kmeans", "birch", "gmm"):
+            exp = ExperimentoGrupos(clave, {"n_clusters": 3})
+            exp.X_escalado = X_escalado
+            exp.entrenar(datos)
+            metricas = exp.evaluar(datos, "train")
+            assert "train_silhouette_std" in metricas
+            assert "train_grupo_menor_min" in metricas
+            assert 0.0 < metricas["train_grupo_menor_min"] <= 1.0
+
+    def test_modelo_determinista_da_desviacion_cero(self):
+        """Verifica que un modelo determinista como Birch da desviación estándar 0."""
+        rng = np.random.default_rng(42)
+        datos = pd.DataFrame(
+            rng.normal(size=(40, len(VARIABLES_PERFIL_USO))), columns=VARIABLES_PERFIL_USO
+        )
+        exp = ExperimentoGrupos("birch", {"n_clusters": 3})
+        exp.X_escalado = StandardScaler().fit_transform(datos[VARIABLES_PERFIL_USO])
+        exp.entrenar(datos)
+        metricas = exp.evaluar(datos, "train")
+
+        assert metricas["train_silhouette_std"] == 0.0
+        assert 0.0 < metricas["train_grupo_menor_min"] <= 1.0
+
+    def test_hijos_busqueda_no_miden_estabilidad(self):
+        """Verifica que los hijos de la búsqueda no calculan las métricas de estabilidad."""
+        rng = np.random.default_rng(42)
+        datos = pd.DataFrame(
+            rng.normal(size=(40, len(VARIABLES_PERFIL_USO))), columns=VARIABLES_PERFIL_USO
+        )
+        exp = ExperimentoGrupos("kmeans", {"n_clusters": 3})
+        exp.etapa = "search"
+        exp.X_escalado = StandardScaler().fit_transform(datos[VARIABLES_PERFIL_USO])
+        exp.entrenar(datos)
+        metricas = exp.evaluar(datos, "train")
+
+        assert "train_silhouette_std" not in metricas
+        assert "train_grupo_menor_min" not in metricas

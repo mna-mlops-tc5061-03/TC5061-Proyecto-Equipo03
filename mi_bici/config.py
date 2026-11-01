@@ -138,9 +138,10 @@ CAPACIDAD_REBALANCEO = 10
 # Umbral de decisión inicial del clasificador en P2 (se calibra en validación con CAPACIDAD_REBALANCEO)
 UMBRAL_DECISION_P2 = 0.5
 
-# P3: valores de k que se prueban y días mínimos con viajes para que el perfil sea estable
+# P3: valores de k que se prueban, días mínimos con viajes y semillas para medir estabilidad
 K_CANDIDATOS = list(range(2, 9))
 MIN_DIAS_PERFIL = 30
+SEMILLAS_ESTABILIDAD = list(range(10))
 
 # Variables que usa cada modelo. Todas vienen de periodos anteriores al que se predice
 VARIABLES_P1 = [

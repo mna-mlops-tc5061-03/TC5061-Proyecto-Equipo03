@@ -180,7 +180,9 @@ class ExperimentoBase(ABC):
         """
         params = {**self.params, **extra}
         if "random_state" in self.entrada.clase().get_params():
-            params["random_state"] = self.semilla
+            params["random_state"] = extra.get("random_state", self.semilla)
+        else:
+            params.pop("random_state", None)
         estimador = self.entrada.clase(**params)
         if self.entrada.escalar:
             return Pipeline([("escalado", StandardScaler()), ("modelo", estimador)])

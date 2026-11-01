@@ -103,6 +103,19 @@ METRICA_SELECCION = {
     "P3": ("train_silhouette", True),
 }
 
+# Criterios adicionales de estabilidad para aceptar un candidato en el Model Registry:
+# métrica -> (cota, mayor_es_mejor). En las 10 semillas de la entrega 2, kmeans obtuvo
+# train_silhouette_std = 0.001 y train_grupo_menor_min = 0.131 (56 estaciones), mientras que gmm
+# tuvo train_silhouette_std = 0.033 y dejó grupos de 1 sola estación (0.002)
+CRITERIOS_ESTABILIDAD = {
+    "P1": {},
+    "P2": {},
+    "P3": {
+        "train_silhouette_std": (0.01, False),
+        "train_grupo_menor_min": (0.05, True),
+    },
+}
+
 # Limpieza: viajes de menos de 2 min que salen y regresan a la misma estación son errores al
 # sacar la bici. Más de 12 h se considera irregular en los términos de MiBici
 DURACION_MINIMA_MIN = 2

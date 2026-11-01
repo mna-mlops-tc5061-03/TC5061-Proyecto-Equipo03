@@ -198,23 +198,12 @@ predicciones = modelo.predict(X)  # X con las columnas de la firma del modelo
 MLflow 2.9. Un alias apunta a una versión: quien usa el modelo siempre carga `@champion`, y
 promover una versión nueva o regresar a la anterior es solo mover el alias, sin cambiar código.
 
-**Cambio de champion en P3.** `make registry` propone el `champion` con la métrica de selección y
-el equipo revisa la estabilidad y el costo antes de aceptarlo. En P3 propuso `gmm` por su silueta,
-pero con distintas semillas su silueta y el tamaño de sus grupos cambian mucho y deja hasta el 96 %
-de las estaciones en un solo grupo, así que el `champion` pasó a la versión de `kmeans`:
-
-```python
-from mlflow import MlflowClient
-
-cliente = MlflowClient()
-cliente.set_registered_model_alias("mibici-equipo03-p3-grupos", "champion", 2)    # kmeans
-cliente.set_registered_model_alias("mibici-equipo03-p3-grupos", "challenger", 1)  # gmm
-```
-
-Los números de versión son los de la corrida oficial; en otra corrida hay que revisarlos en la UI.
-
-Si se vuelve a correr `make registry`, el `champion` de P3 regresa a `gmm`, porque elige por
-silueta, y hay que repetir este cambio de alias.
+**Criterio de estabilidad en P3.** En P3 no basta con tener la mayor silueta: con distintas
+semillas, `gmm` varía mucho (`train_silhouette_std` de `0.033`) y llega a dejar grupos de una sola
+estación y hasta el 96 % de las estaciones en un solo grupo. Por eso `make registry` aplica además
+`CRITERIOS_ESTABILIDAD` de `config.py` (`train_silhouette_std <= 0.01` y
+`train_grupo_menor_min >= 0.05` en las 10 semillas de `SEMILLAS_ESTABILIDAD`) y elige un `champion`
+estable en P3 sin mover el alias a mano.
 
 ## Buenas prácticas aplicadas
 

@@ -32,10 +32,11 @@ IGNORADAS = (
 )
 NO_IGNORADAS = ("data/manifest.json", ".env.example", "models/.gitkeep")
 
-# Patrones de credenciales que no deben aparecer en ningún archivo versionado
+# Patrones de credenciales que no deben aparecer en ningún archivo versionado. Sin \b al inicio
+# y con \w* después, para que detecten nombres con prefijo como MLFLOW_TRACKING_PASSWORD
 PATRONES_CREDENCIALES = {
-    "clave": r"(?i)\b(password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{4,}",
-    "token": r"(?i)\b(token|secret|api_?key)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{8,}",
+    "clave": r"(?i)(password|passwd|pwd)\w*\s*[:=]\s*['\"]?[^\s'\"]{4,}",
+    "token": r"(?i)(token|secret|api_?key)\w*\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{8,}",
     "llave de AWS": r"\bAKIA[0-9A-Z]{16}\b",
     "token de GitHub": r"\bgh[pousr]_[A-Za-z0-9]{36,}\b",
     "llave privada": r"-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----",

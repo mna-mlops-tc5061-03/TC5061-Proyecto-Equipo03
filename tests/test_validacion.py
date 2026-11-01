@@ -9,6 +9,8 @@ from mi_bici.validacion import (
     condicion_pares_correlacionados,
     guardar_resumen,
     preparar_deepchecks,
+    separar_por_fecha,
+    validar_drift,
     validar_integridad,
 )
 
@@ -114,3 +116,77 @@ class TestCondicionCorrelacion:
         assert not resultado.is_pass()
         assert "('a', 'b')" in resultado.details
         assert "('b', 'a')" not in resultado.details
+
+
+@pytest.fixture
+def entrenamiento_y_prueba():
+    """Dos conjuntos sintéticos tomados de la misma distribución, en fechas consecutivas."""
+    rng = np.random.default_rng(1)
+
+    def tabla(n: int, inicio: str) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "fecha": pd.date_range(inicio, periods=n, freq="h"),
+                "viajes_lag_1": rng.poisson(20, n).astype(float),
+                "dia_semana": rng.integers(0, 7, n),
+                "capacidad": rng.integers(10, 40, n),
+                "riesgo": rng.binomial(1, 0.1, n),
+            }
+        )
+
+    return tabla(1500, "2026-01-01"), tabla(1500, "2026-08-01")
+
+
+def validar(train: pd.DataFrame, test: pd.DataFrame) -> dict:
+    return validar_drift(
+        train,
+        test,
+        "riesgo",
+        categoricas=["dia_semana"],
+        tipo_etiqueta="binary",
+        fecha="fecha",
+    )
+
+
+def condiciones_de(resumen: dict, chequeo: str) -> list[dict]:
+    return [c for c in resumen["condiciones"] if c["chequeo"] == chequeo]
+
+
+class TestValidacionDrift:
+    def test_misma_distribucion_no_marca_drift(self, entrenamiento_y_prueba):
+        """Verifica que dos muestras de la misma distribución no marcan drift."""
+        resumen = validar(*entrenamiento_y_prueba)
+
+        for chequeo in ("Feature Drift", "Label Drift"):
+            assert condiciones_de(resumen, chequeo), f"{chequeo} no corrió"
+            assert all(c["estado"] == "pasa" for c in condiciones_de(resumen, chequeo))
+
+    def test_detecta_variable_desplazada(self, entrenamiento_y_prueba):
+        """Verifica que desplazar una variable en prueba marca drift en esa variable."""
+        train, test = entrenamiento_y_prueba
+        test = test.assign(viajes_lag_1=test["viajes_lag_1"] + 15)
+
+        resumen = validar(train, test)
+
+        assert any(c["estado"] != "pasa" for c in condiciones_de(resumen, "Feature Drift"))
+        assert resumen["drift"]["viajes_lag_1"]["puntaje"] > 0.2
+        assert resumen["drift"]["capacidad"]["puntaje"] < 0.2
+
+    def test_detecta_cambio_en_la_tasa_del_objetivo(self, entrenamiento_y_prueba):
+        """Caso límite: si la tasa de riesgo sube de 10 % a 60 %, LabelDrift lo marca."""
+        train, test = entrenamiento_y_prueba
+        test = test.assign(riesgo=np.random.default_rng(2).binomial(1, 0.6, len(test)))
+
+        resumen = validar(train, test)
+
+        assert any(c["estado"] != "pasa" for c in condiciones_de(resumen, "Label Drift"))
+        assert resumen["objetivo"]["media_prueba"] > resumen["objetivo"]["media_entrenamiento"]
+
+    def test_separar_por_fecha(self, entrenamiento_y_prueba):
+        """Verifica que el corte deja el entrenamiento antes y la prueba desde la fecha de corte."""
+        tabla = pd.concat(entrenamiento_y_prueba, ignore_index=True)
+
+        train, test = separar_por_fecha(tabla, "fecha", "2026-08-01")
+
+        assert train["fecha"].max() < pd.Timestamp("2026-08-01") <= test["fecha"].min()
+        assert len(train) + len(test) == len(tabla)

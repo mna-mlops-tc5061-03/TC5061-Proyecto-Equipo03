@@ -56,7 +56,9 @@ test-fast:
 .PHONY: security
 security:
 	bandit -r mi_bici -c pyproject.toml -q
-	pip-audit -r requirements.txt
+	# DeepChecks 0.19.1 necesita setuptools<81 (usa pkg_resources). Los dos avisos de setuptools son al
+	# armar un sdist en macOS y al instalar eggs en Windows, y este proyecto no hace ninguno de los dos
+	pip-audit -r requirements.txt --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3-9gf7-h52w
 
 
 ## Set up Python interpreter environment

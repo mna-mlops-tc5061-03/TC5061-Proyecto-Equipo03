@@ -30,6 +30,10 @@ extend-select = ["I"]  # Add import sorting
 known-first-party = ["mi_bici"]
 force-sort-within-sections = true
 
+[tool.bandit]
+# Importar subprocess no es un riesgo por sí solo. bandit sigue revisando cada llamada (B603 y B607)
+skips = ["B404"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["lento: levanta MLflow o entrena con muchos datos. make test-fast las salta"]

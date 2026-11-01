@@ -121,6 +121,7 @@ make registry          # registra el mejor modelo de cada pregunta con el alias 
 make test              # corre las pruebas de tests/
 make test-fast         # corre las pruebas sin las lentas, que levantan MLflow
 make lint              # revisa el formato del código
+make security          # revisa el código con bandit y las dependencias con pip-audit
 ```
 
 ## Configuración
@@ -256,12 +257,12 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── reports/                 # reporte de la propuesta y figures/
 ├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make experimentos, make registry, make test, make test-fast, make lint
+├── Makefile                 # make data, make train, make experimentos, make registry, make test, make test-fast, make lint, make security
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking
 ├── requirements.txt         # dependencias con versiones fijas
-└── pyproject.toml           # metadatos del paquete y configuración de ruff
+└── pyproject.toml           # metadatos del paquete y configuración de ruff y bandit
 ```
 
 `.gitignore` excluye los datos de MiBici, `mlflow.db`, `mlruns/`, `mlartifacts/`, `.env` y los

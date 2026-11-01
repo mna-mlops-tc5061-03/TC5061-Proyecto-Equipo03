@@ -103,12 +103,12 @@ make experimentos
 make registry
 ```
 
-El modelo elegido de cada pregunta en la corrida oficial (commit `ee51bc9`) se reproduce con:
+El modelo elegido de cada pregunta en la corrida oficial (commit `46b18e1`) se reproduce con:
 
 ```bash
 mlflow run . -e train -P question=p1 -P model=hgb -P params="learning_rate=0.1,max_leaf_nodes=63" --experiment-name mibici-equipo03 --env-manager local
 mlflow run . -e train -P question=p2 -P model=hgb -P params="learning_rate=0.05,max_leaf_nodes=127" --experiment-name mibici-equipo03 --env-manager local
-mlflow run . -e train -P question=p3 -P model=kmeans -P params="n_clusters=3" --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e train -P question=p3 -P model=kmeans -P params="n_clusters=2" --experiment-name mibici-equipo03 --env-manager local
 ```
 
 Otros comandos:

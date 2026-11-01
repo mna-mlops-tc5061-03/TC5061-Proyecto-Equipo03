@@ -153,6 +153,8 @@ class TestRegistry:
         assert "pasó el criterio de estabilidad" in describir_version(
             aceptados.iloc[0], base, "P3"
         )
+        with pytest.raises(ValueError, match="criterio de estabilidad.*make experimentos"):
+            registrar("P3", runs[runs.run_id != "kmeans"], None)
 
     def test_solo_compara_runs_limpios_con_los_mismos_datos(self):
         """Verifica que se ignoran los runs con cambios sin guardar, de otros datos o de otra pregunta."""

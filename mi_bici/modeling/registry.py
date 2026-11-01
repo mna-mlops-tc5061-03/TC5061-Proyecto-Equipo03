@@ -233,12 +233,19 @@ def registrar(pregunta: str, runs: pd.DataFrame, cliente: MlflowClient) -> dict:
         Nombre y versión del champion, su métrica de selección, la del baseline y la mejora.
 
     Raises:
-        ValueError: Si no hay baseline o ningún candidato le gana.
+        ValueError: Si no hay baseline o ningún candidato le gana y cumple el criterio de
+            estabilidad.
     """
     metrica, mayor_es_mejor = METRICA_SELECCION[pregunta]
     base, aceptados = elegir(runs, pregunta)
     if aceptados.empty:
-        raise ValueError(f"{pregunta}: ningún candidato le gana al baseline en {metrica}")
+        detalle = (
+            " y cumple el criterio de estabilidad"
+            " (si faltan métricas, vuelve a correr `make experimentos`)"
+            if CRITERIOS_ESTABILIDAD.get(pregunta)
+            else ""
+        )
+        raise ValueError(f"{pregunta}: ningún candidato le gana al baseline en {metrica}{detalle}")
 
     nombre = MODELOS_REGISTRO[pregunta]
     versiones = {}

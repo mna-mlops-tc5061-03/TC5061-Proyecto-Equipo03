@@ -19,6 +19,7 @@ from mi_bici.config import (
     ALIAS_PRODUCCION,
     ALIAS_RESPALDO,
     BLOQUE_HORAS,
+    CRITERIOS_ESTABILIDAD,
     EXPERIMENT_NAME,
     METRICA_SELECCION,
     MODELOS_REGISTRO,
@@ -102,7 +103,16 @@ def elegir(runs: pd.DataFrame, pregunta: str) -> tuple[pd.Series, pd.DataFrame]:
     """
     metrica, mayor_es_mejor = METRICA_SELECCION[pregunta]
     metricas = [f"metrics.{m}" for m in (metrica, metrica_prueba(metrica)) if m]
-    columnas = [ETIQUETA_PREGUNTA, ETIQUETA_ETAPA, "tags.git_dirty", *PARTICION, *metricas]
+    criterios = CRITERIOS_ESTABILIDAD.get(pregunta, {})
+    columnas_estabilidad = [f"metrics.{m}" for m in criterios]
+    columnas = [
+        ETIQUETA_PREGUNTA,
+        ETIQUETA_ETAPA,
+        "tags.git_dirty",
+        *PARTICION,
+        *metricas,
+        *columnas_estabilidad,
+    ]
     runs = runs.reindex(columns=[*runs.columns, *(c for c in columnas if c not in runs)])
     propios = runs[
         (runs[ETIQUETA_PREGUNTA].fillna("").astype(str).str.upper() == pregunta)
@@ -124,6 +134,9 @@ def elegir(runs: pd.DataFrame, pregunta: str) -> tuple[pd.Series, pd.DataFrame]:
     acepta = pd.Series(True, index=candidatos.index)
     for columna in metricas:
         acepta &= signo * (candidatos[columna] - base[columna]) > 0
+    for m, (cota, mayor) in criterios.items():
+        col = candidatos[f"metrics.{m}"]
+        acepta &= (col >= cota) if mayor else (col <= cota)
     aceptados = candidatos[acepta].sort_values(metricas[0], ascending=not mayor_es_mejor)
     return base, aceptados
 
@@ -195,6 +208,13 @@ def describir_version(run: pd.Series, base: pd.Series, pregunta: str) -> str:
         comparaciones.append(
             f"`{m}` = {valor:.3f} contra {referencia:.3f} del baseline ({cambio:+.1%})"
         )
+    criterios = CRITERIOS_ESTABILIDAD.get(pregunta, {})
+    if criterios:
+        detalle = ", ".join(
+            f"`{m}` = {run[f'metrics.{m}']:.3f} ({'>=' if mayor else '<='} {cota})"
+            for m, (cota, mayor) in criterios.items()
+        )
+        comparaciones.append(f"pasó el criterio de estabilidad ({detalle})")
     return (
         f"Elegida por {'; '.join(comparaciones)}. Run `{run.run_id}` de `{EXPERIMENT_NAME}`, "
         f"commit `{run['tags.git_commit'][:7]}`, datos `{run['params.data_version']}`."

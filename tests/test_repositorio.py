@@ -40,6 +40,8 @@ PATRONES_CREDENCIALES = {
     "llave de AWS": r"\bAKIA[0-9A-Z]{16}\b",
     "token de GitHub": r"\bgh[pousr]_[A-Za-z0-9]{36,}\b",
     "llave privada": r"-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----",
+    # Usuario y contraseña dentro de una URL, como podría quedar MLFLOW_TRACKING_URI
+    "credenciales en URL": r"\b[a-z][a-z0-9+.\-]*://[^\s/:@'\"]+:[^\s/@'\"]+@",
 }
 
 

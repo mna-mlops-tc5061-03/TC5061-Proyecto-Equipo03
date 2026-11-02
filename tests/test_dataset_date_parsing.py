@@ -101,6 +101,14 @@ class TestDateParsing:
         assert pd.notna(result.iloc[0])
         assert pd.isna(result.iloc[1])
 
+    def test_invalid_string_first_does_not_swap_day_and_month(self):
+        """Caso límite: un texto inválido al inicio, aun con - o /, no afecta las fechas ISO."""
+        for invalido in ("fecha_invalida_123", "N/A", "sin-dato"):
+            result = parse_datetime_series(pd.Series([invalido, "2025-10-01 08:00:00"]))
+
+            assert pd.isna(result.iloc[0]), invalido
+            assert result.iloc[1] == pd.Timestamp("2025-10-01 08:00:00"), invalido
+
     def test_empty_series(self):
         """Verifica que una serie vacía no lance error."""
         series = pd.Series([], dtype="object")

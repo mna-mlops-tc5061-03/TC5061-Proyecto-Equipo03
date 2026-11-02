@@ -9,6 +9,7 @@ from mi_bici.validacion import (
     condicion_pares_correlacionados,
     guardar_resumen,
     preparar_deepchecks,
+    reportar,
     separar_por_fecha,
     validar_drift,
     validar_integridad,
@@ -68,6 +69,13 @@ class TestValidacionIntegridad:
 
         assert not resumen["paso"]
         assert "Data Duplicates" in chequeos_que_no_pasaron(resumen)
+
+    def test_reportar_dice_si_pasan_todas(self, tabla_limpia):
+        """Verifica que `reportar` devuelve si pasa la tabla, para que la CLI salga con error."""
+        assert reportar("limpia", validar_integridad(tabla_limpia, "sintetica"))
+
+        tabla_limpia.loc[tabla_limpia.sample(frac=0.2, random_state=0).index, "duracion"] = np.nan
+        assert not reportar("con_nulos", validar_integridad(tabla_limpia, "sintetica"))
 
     def test_un_poco_de_nulos_si_pasa(self, tabla_limpia):
         """Caso límite: 1 % de nulos queda debajo del umbral y no se marca."""
@@ -181,6 +189,15 @@ class TestValidacionDrift:
 
         assert any(c["estado"] != "pasa" for c in condiciones_de(resumen, "Label Drift"))
         assert resumen["objetivo"]["media_prueba"] > resumen["objetivo"]["media_entrenamiento"]
+
+    def test_resumen_usa_el_nombre_de_la_tabla(self, entrenamiento_y_prueba):
+        """Verifica que el resumen se identifica con el nombre de la tabla y no con el objetivo."""
+        resumen = validar_drift(
+            *entrenamiento_y_prueba, "riesgo", tipo_etiqueta="binary", nombre="P2"
+        )
+
+        assert resumen["tabla"] == "P2"
+        assert resumen["objetivo"]["nombre"] == "riesgo"
 
     def test_separar_por_fecha(self, entrenamiento_y_prueba):
         """Verifica que el corte deja el entrenamiento antes y la prueba desde la fecha de corte."""

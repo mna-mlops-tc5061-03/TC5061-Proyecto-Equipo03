@@ -165,14 +165,15 @@ Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno ne
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 135 pruebas de tests/
+make test            # las 140 pruebas de tests/
 make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt
 make lint            # formato y estilo con ruff, también de tests/
 ```
 
-`make validar-datos` usa los datos procesados, así que antes hay que correr la ingesta.
+`make validar-datos` usa los datos procesados, así que antes hay que correr la ingesta con
+`make data`.
 
 | Paso de la entrega | Dónde | PR |
 |---|---|---|
@@ -194,28 +195,30 @@ en el CI.
 | Archivo | Qué prueba | Pruebas |
 |---|---|---|
 | `test_dataset_cleaning.py` | Limpieza de la ingesta: quita `viaje_id` repetidos, viajes de menos de 2 minutos que regresan a la misma estación, duraciones negativas y viajes de más de 12 horas | 4 |
-| `test_dataset_date_parsing.py` | Fechas en los formatos del portal. Límite: serie vacía, nulos, texto inválido y que no confunda el día con el mes | 10 |
+| `test_dataset_date_parsing.py` | Fechas en los formatos del portal. Límite: serie vacía, nulos, texto inválido (también como primer valor) y que no confunda el día con el mes | 11 |
 | `test_dataset_manifest.py` | Versión de los datos: el hash cambia si cambia un valor y no depende del orden de las filas ni de los archivos | 5 |
 | `test_features.py` | Variables de P1, P2 y P3. Límite: festivos, día sin viajes, flujo justo en el umbral, estación sin capacidad o con pocos días, y que ninguna use información del día que se predice | 28 |
-| `test_validacion.py` | DeepChecks con datos sintéticos: detecta nulos, duplicados, una variable desplazada y un cambio en la tasa del objetivo, y el resumen no copia filas | 12 |
-| `test_repositorio.py` | Que no se versionen credenciales, `.env`, datos, bases ni modelos | 28 |
+| `test_validacion.py` | DeepChecks con datos sintéticos: detecta nulos, duplicados, una variable desplazada y un cambio en la tasa del objetivo, y el resumen no copia filas y dice si la tabla pasa | 14 |
+| `test_repositorio.py` | Que no se versionen credenciales (también usuario y contraseña dentro de una URL), `.env`, datos, bases ni modelos | 29 |
 | `modeling/test_base.py` | Registro común de cada run: catálogo, hiperparámetros y modelo desconocido | 5 |
 | `modeling/test_evaluate.py` | Métricas por tarea. Límite: ningún bloque en riesgo y un solo grupo | 4 |
 | `modeling/test_p1.py`, `test_p2.py` y `test_p3.py` | Modelos de cada pregunta: escalado, balanceo, umbral de P2 y estabilidad de P3 | 18 |
 | `modeling/test_registry.py` | `make registry`: elige al que gana en validación y en prueba, solo con runs limpios y los mismos datos, y descarta un candidato inestable de P3 | 8 |
 | `modeling/test_search.py` | Búsqueda con nested runs y `params=mejor` | 4 |
 | `modeling/test_mlproject.py` | Entradas del `MLproject` con sus valores por defecto | 3 |
-| `modeling/test_reproducibilidad.py` | Mismas predicciones y métricas con la misma semilla | 6 |
+| `modeling/test_reproducibilidad.py` | Mismas predicciones y métricas con la misma semilla | 7 |
 
 **Reproducibilidad.** `test_reproducibilidad.py` entrena dos veces con `SEMILLA` un candidato de
 cada pregunta (`hgb` de P1, `rf` de P2, y `kmeans` y `gmm` de P3) y compara las predicciones y las
 métricas. En P2 compara la probabilidad, no solo la etiqueta. Como caso límite, con otra semilla
-`rf` y `kmeans` predicen distinto, así que la semilla sí llega al modelo.
+`hgb`, `rf` y `kmeans` predicen distinto, así que la semilla sí llega al modelo. En P1 se usan
+12,000 filas, porque con menos de 10,000 `HistGradientBoosting` no usa la semilla y la prueba
+pasaría aunque la semilla no llegara.
 
 Los dos avisos de `make test` vienen de MLflow (SQLAlchemy) y de DeepChecks (`pkg_resources`), no
 del código del proyecto:
 
-![make test con las 135 pruebas aprobadas](reports/figures/semana7/make_test.png)
+![make test con las 140 pruebas aprobadas](reports/figures/semana7/make_test.png)
 
 ### Resultados de DeepChecks
 
@@ -241,8 +244,10 @@ Lo que encontró:
 - No hay tipos mezclados, nulos de distintas formas, fechas de prueba dentro del entrenamiento ni
   pares de columnas con correlación mayor a 0.9.
 
-La terminal solo muestra conteos y medias. Los HTML de `reports/deepchecks/` no se versionan ni se
-capturan porque muestran filas de ejemplo:
+Al final de cada tabla, la terminal dice cuántas condiciones pasan y avisa de los chequeos que no
+aplican, como `New Label Train Test` en P1, que es de regresión. Si alguna condición no pasa,
+`make validar-datos` termina con error. La terminal solo muestra conteos y medias. Los HTML de
+`reports/deepchecks/` no se versionan ni se capturan porque muestran filas de ejemplo:
 
 ![make validar-datos con la integridad y el drift](reports/figures/semana7/make_validar_datos.png)
 
@@ -261,6 +266,8 @@ capturan porque muestran filas de ejemplo:
   `git ls-files` y falla si aparece un `.env`, datos, una base, un modelo o una carpeta de MLflow,
   si `.gitignore` deja de ignorarlos o si un archivo trae algo con forma de credencial. Se probó
   agregando a la fuerza un `.env` y un Parquet: fallaron 3 pruebas.
+- Se revisó una vez todo el historial de Git: ningún commit trae un `.env`, una base, datos o un
+  modelo, ni algo con forma de credencial.
 
 **bandit** revisa el código de `mi_bici/`. Antes del
 [#89](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/89) encontró 2

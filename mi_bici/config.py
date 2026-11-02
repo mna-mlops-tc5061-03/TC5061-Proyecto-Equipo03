@@ -108,7 +108,8 @@ METRICA_SELECCION = {
 # Criterios adicionales de estabilidad para aceptar un candidato en el Model Registry:
 # métrica -> (cota, mayor_es_mejor). En las 10 semillas de la entrega 2, kmeans obtuvo
 # train_silhouette_std = 0.001 y train_grupo_menor_min = 0.131 (56 estaciones), mientras que gmm
-# tuvo train_silhouette_std = 0.033 y dejó grupos de 1 sola estación (0.002)
+# tuvo train_silhouette_std = 0.033 y dejó grupos de 1 sola estación (0.002). En la corrida
+# oficial con k=2 en K_CANDIDATOS (#74), kmeans dio 0.000 y 0.477, y gmm 0.038 y 0.002
 CRITERIOS_ESTABILIDAD = {
     "P1": {},
     "P2": {},

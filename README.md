@@ -103,12 +103,12 @@ make experimentos
 make registry
 ```
 
-El modelo elegido de cada pregunta en la corrida oficial (commit `ee51bc9`) se reproduce con:
+El modelo elegido de cada pregunta en la corrida oficial (commit `46b18e1`) se reproduce con:
 
 ```bash
 mlflow run . -e train -P question=p1 -P model=hgb -P params="learning_rate=0.1,max_leaf_nodes=63" --experiment-name mibici-equipo03 --env-manager local
 mlflow run . -e train -P question=p2 -P model=hgb -P params="learning_rate=0.05,max_leaf_nodes=127" --experiment-name mibici-equipo03 --env-manager local
-mlflow run . -e train -P question=p3 -P model=kmeans -P params="n_clusters=3" --experiment-name mibici-equipo03 --env-manager local
+mlflow run . -e train -P question=p3 -P model=kmeans -P params="n_clusters=2" --experiment-name mibici-equipo03 --env-manager local
 ```
 
 Otros comandos:
@@ -395,11 +395,11 @@ MLflow 2.9. Un alias apunta a una versión: quien usa el modelo siempre carga `@
 promover una versión nueva o regresar a la anterior es solo mover el alias, sin cambiar código.
 
 **Criterio de estabilidad en P3.** En P3 no basta con tener la mayor silueta: con distintas
-semillas, `gmm` varía mucho (`train_silhouette_std` de `0.033`) y llega a dejar grupos de una sola
-estación y hasta el 96 % de las estaciones en un solo grupo. Por eso `make registry` aplica además
-`CRITERIOS_ESTABILIDAD` de `config.py` (`train_silhouette_std <= 0.01` y
-`train_grupo_menor_min >= 0.05` en las 10 semillas de `SEMILLAS_ESTABILIDAD`) y elige un `champion`
-estable en P3 sin mover el alias a mano.
+semillas, `gmm` varía mucho (`train_silhouette_std` de `0.038` en la corrida oficial) y llega a
+dejar grupos de una sola estación y hasta el 96 % de las estaciones en un solo grupo. Por eso
+`make registry` aplica además `CRITERIOS_ESTABILIDAD` de `config.py` (`train_silhouette_std <= 0.01`
+y `train_grupo_menor_min >= 0.05` en las 10 semillas de `SEMILLAS_ESTABILIDAD`) y elige un
+`champion` estable en P3 sin mover el alias a mano.
 
 ## Buenas prácticas aplicadas
 

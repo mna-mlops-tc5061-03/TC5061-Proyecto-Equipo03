@@ -172,7 +172,8 @@ make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt
 make lint            # formato y estilo con ruff, también de tests/
 ```
 
-`make validar-datos` usa los datos procesados, así que antes hay que correr la ingesta.
+`make validar-datos` usa los datos procesados, así que antes hay que correr la ingesta con
+`make data`.
 
 | Paso de la entrega | Dónde | PR |
 |---|---|---|
@@ -245,8 +246,8 @@ Lo que encontró:
 
 Al final de cada tabla, la terminal dice cuántas condiciones pasan y avisa de los chequeos que no
 aplican, como `New Label Train Test` en P1, que es de regresión. Si alguna condición no pasa,
-`make validar-datos` termina con error. La terminal solo muestra conteos y medias. Los HTML de `reports/deepchecks/` no se versionan ni se
-capturan porque muestran filas de ejemplo:
+`make validar-datos` termina con error. La terminal solo muestra conteos y medias. Los HTML de
+`reports/deepchecks/` no se versionan ni se capturan porque muestran filas de ejemplo:
 
 ![make validar-datos con la integridad y el drift](reports/figures/semana7/make_validar_datos.png)
 

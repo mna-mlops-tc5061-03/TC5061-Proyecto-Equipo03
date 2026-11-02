@@ -159,6 +159,167 @@ Tres chequeos no funcionan con pandas 3, numpy 2 o scikit-learn 1.9 y se quitan 
 junto con los que no aplican a estas tablas. El motivo de cada uno está en
 `CHEQUEOS_QUE_SE_QUITAN` y `CHEQUEOS_DRIFT_QUE_SE_QUITAN`.
 
+## Pruebas y chequeos
+
+Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno necesita el servidor
+de MLflow ni el `.env`:
+
+```bash
+make test            # las 135 pruebas de tests/
+make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
+make validar-datos   # integridad y drift de los datos procesados con DeepChecks
+make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt
+make lint            # formato y estilo con ruff, también de tests/
+```
+
+`make validar-datos` usa los datos procesados, así que antes hay que correr la ingesta.
+
+| Paso de la entrega | Dónde | PR |
+|---|---|---|
+| Pruebas unitarias con casos normales y límite | `tests/` | [#93](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/93), [#95](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/95) |
+| Reproducibilidad del entrenamiento | `tests/modeling/test_reproducibilidad.py` | [#94](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/94) |
+| Validación de datos con DeepChecks | `mi_bici/validacion.py` y `make validar-datos` | [#90](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/90), [#91](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/91) |
+| El repositorio no expone credenciales ni datos | `.gitignore`, `.env` y `tests/test_repositorio.py` | [#96](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/96) |
+| Análisis de seguridad del código y las dependencias | `make security` y el CI | [#89](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/89), [#100](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/100) |
+| Pruebas en su carpeta y con un solo comando | `tests/`, ordenada como `mi_bici/`, y `make test` | [#93](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/93) |
+
+### Pruebas con PyTest
+
+`tests/` sigue la estructura de `mi_bici/`: lo de `mi_bici/modeling/` se prueba en
+`tests/modeling/`. `tests/conftest.py` arma viajes y estaciones sintéticos con el formato de la
+ingesta y con casos límite a propósito (una estación con pocos días de historia, otra con capacidad
+0 y viajes que cruzan el corte de prueba), así que ninguna prueba usa datos de MiBici y todas corren
+en el CI.
+
+| Archivo | Qué prueba | Pruebas |
+|---|---|---|
+| `test_dataset_cleaning.py` | Limpieza de la ingesta: quita `viaje_id` repetidos, viajes de menos de 2 minutos que regresan a la misma estación, duraciones negativas y viajes de más de 12 horas | 4 |
+| `test_dataset_date_parsing.py` | Fechas en los formatos del portal. Límite: serie vacía, nulos, texto inválido y que no confunda el día con el mes | 10 |
+| `test_dataset_manifest.py` | Versión de los datos: el hash cambia si cambia un valor y no depende del orden de las filas ni de los archivos | 5 |
+| `test_features.py` | Variables de P1, P2 y P3. Límite: festivos, día sin viajes, flujo justo en el umbral, estación sin capacidad o con pocos días, y que ninguna use información del día que se predice | 28 |
+| `test_validacion.py` | DeepChecks con datos sintéticos: detecta nulos, duplicados, una variable desplazada y un cambio en la tasa del objetivo, y el resumen no copia filas | 12 |
+| `test_repositorio.py` | Que no se versionen credenciales, `.env`, datos, bases ni modelos | 28 |
+| `modeling/test_base.py` | Registro común de cada run: catálogo, hiperparámetros y modelo desconocido | 5 |
+| `modeling/test_evaluate.py` | Métricas por tarea. Límite: ningún bloque en riesgo y un solo grupo | 4 |
+| `modeling/test_p1.py`, `test_p2.py` y `test_p3.py` | Modelos de cada pregunta: escalado, balanceo, umbral de P2 y estabilidad de P3 | 18 |
+| `modeling/test_registry.py` | `make registry`: elige al que gana en validación y en prueba, solo con runs limpios y los mismos datos, y descarta un candidato inestable de P3 | 8 |
+| `modeling/test_search.py` | Búsqueda con nested runs y `params=mejor` | 4 |
+| `modeling/test_mlproject.py` | Entradas del `MLproject` con sus valores por defecto | 3 |
+| `modeling/test_reproducibilidad.py` | Mismas predicciones y métricas con la misma semilla | 6 |
+
+**Reproducibilidad.** `test_reproducibilidad.py` entrena dos veces con `SEMILLA` un candidato de
+cada pregunta (`hgb` de P1, `rf` de P2, y `kmeans` y `gmm` de P3) y compara las predicciones y las
+métricas. En P2 compara la probabilidad, no solo la etiqueta. Como caso límite, con otra semilla
+`rf` y `kmeans` predicen distinto, así que la semilla sí llega al modelo.
+
+Los dos avisos de `make test` vienen de MLflow (SQLAlchemy) y de DeepChecks (`pkg_resources`), no
+del código del proyecto:
+
+![make test con las 135 pruebas aprobadas](reports/figures/semana7/make_test.png)
+
+### Resultados de DeepChecks
+
+`make validar-datos` corre lo descrito en
+[Validación de datos con DeepChecks](#validación-de-datos-con-deepchecks). Con los datos de la
+entrega pasan todas las condiciones:
+
+| Tabla | Filas | Suite | Condiciones que pasan |
+|---|---|---|---|
+| Viajes | 4,332,379 | `data_integrity` | 9 de 9 |
+| Estaciones | 484 | `data_integrity` | 9 de 9 |
+| P1, `demanda_diaria` | 112,084 de entrenamiento y 28,318 de prueba | `train_test_validation` | 9 de 9 |
+| P2, `etiqueta_riesgo` | 896,067 de entrenamiento y 226,930 de prueba | `train_test_validation` | 10 de 10 |
+
+Lo que encontró:
+
+- **Nulos:** solo `nacimiento` tiene, en 0.01 % de los viajes, lejos del 5 % permitido.
+- **Duplicados:** 0.08 % de los viajes. La ingesta ya quita los `viaje_id` repetidos, así que son
+  viajes distintos con los mismos datos, como dos personas que salen juntas.
+- **Drift:** ninguna variable llega a 0.2. Las que más cambian son `viajes_lag_7` en P1 (0.06) y
+  `capacidad` en P2 (0.05). El objetivo tampoco: 0.04 en P1 (Kolmogorov-Smirnov) y 0.01 en P2
+  (V de Cramér). La media de viajes pasa de 30.27 a 29.77 y la tasa de riesgo de 4.82 % a 4.36 %.
+- No hay tipos mezclados, nulos de distintas formas, fechas de prueba dentro del entrenamiento ni
+  pares de columnas con correlación mayor a 0.9.
+
+La terminal solo muestra conteos y medias. Los HTML de `reports/deepchecks/` no se versionan ni se
+capturan porque muestran filas de ejemplo:
+
+![make validar-datos con la integridad y el drift](reports/figures/semana7/make_validar_datos.png)
+
+### Seguridad
+
+**Credenciales y datos sensibles.**
+
+- `.gitignore` deja fuera los datos de MiBici (de `data/` solo se versiona `manifest.json`),
+  `mlflow.db`, `mlruns/`, `mlartifacts/`, los modelos, `.env` y sus variantes (menos
+  `.env.example`) y `reports/deepchecks/`.
+- La dirección del servidor de MLflow se lee de `MLFLOW_TRACKING_URI` en el `.env`.
+  `.env.example` solo trae valores de ejemplo.
+- La ingesta quita los identificadores del viaje y del usuario, y lo que se registra en MLflow son
+  tablas agregadas.
+- `tests/test_repositorio.py` lo revisa en cada PR: lee los archivos versionados con
+  `git ls-files` y falla si aparece un `.env`, datos, una base, un modelo o una carpeta de MLflow,
+  si `.gitignore` deja de ignorarlos o si un archivo trae algo con forma de credencial. Se probó
+  agregando a la fuerza un `.env` y un Parquet: fallaron 3 pruebas.
+
+**bandit** revisa el código de `mi_bici/`. Antes del
+[#89](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/89) encontró 2
+hallazgos de severidad alta y 3 de baja:
+
+| Hallazgo | Dónde | Severidad | Cómo se atendió |
+|---|---|---|---|
+| B324: hash MD5 | `dataset.py`, 2 veces | Alta | `hashlib.md5(usedforsecurity=False)`: es la suma de verificación del manifiesto, no protege nada, y el hash no cambia |
+| B404: importar `subprocess` | `modeling/base.py` | Baja | Se omite en `[tool.bandit]` de `pyproject.toml`, porque solo avisa por el import. Las llamadas se siguen revisando |
+| B603 y B607: `subprocess` con `git` | `modeling/base.py` | Baja | `# nosec B603 B607`: la llamada no usa shell y sus argumentos son fijos |
+
+Después, en `validacion.py`, bandit marcó B105 (contraseña escrita en el código, severidad baja)
+por el texto `"pasa"`, que es el estado de una condición de DeepChecks, y se marcó con
+`# nosec B105`. Por eso `make security` imprime siete avisos `nosec encountered (B105), but no
+failed test`, uno por cada uno de los otros textos de esa línea. No son hallazgos.
+
+**pip-audit** revisa las dependencias de `requirements.txt`:
+
+| Paquete | Versión | Vulnerabilidades | Cómo se atendió |
+|---|---|---|---|
+| `mlflow` | 3.16.1 | CVE-2026-53995, CVE-2026-115886 y CVE-2026-116691 | Se subió a 3.17.2 ([#100](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/100)) |
+| `requests` | 2.32.5 | PYSEC-2026-2275 | Se subió a 2.33.0 ([#100](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/100)) |
+| `setuptools` | 80.10.2 | PYSEC-2026-3447 (CVE-2026-59890) y GHSA-xmj3-9gf7-h52w | Riesgo aceptado |
+
+Con MLflow 3.17.2, una corrida de P1 con `mlflow run` dio el mismo `data_version` y las mismas
+métricas que antes.
+
+**Riesgo aceptado en `setuptools`.** DeepChecks 0.19.1, su última versión, usa `pkg_resources`,
+que necesita `setuptools<81`. Las dos vulnerabilidades no aplican a este proyecto: la primera
+ocurre al armar un sdist en macOS y la segunda al instalar wheels como egg en Windows, y aquí no se
+hace ninguna de las dos. `make security` las ignora con `--ignore-vuln`, que pip-audit ofrece para
+vulnerabilidades que no aplican, y el motivo queda en el `Makefile`. pip-audit reporta
+«3 ignored» porque su base de datos trae PYSEC-2026-3447 dos veces. `mi-bici` aparece como no
+auditado porque es el paquete de este repositorio (`-e .`), que no está en PyPI; su código lo
+revisa bandit.
+
+bandit antes del #89, con sus 5 hallazgos y el resumen:
+
+![bandit antes del #89, con los 5 hallazgos](reports/figures/semana7/bandit_antes_hallazgos.png)
+
+![Resumen de bandit antes del #89: 2 altos y 3 bajos](reports/figures/semana7/bandit_antes_resumen.png)
+
+`make security` antes del #100, con bandit ya sin hallazgos y pip-audit con 5 vulnerabilidades:
+
+![make security antes del #100](reports/figures/semana7/make_security_antes.png)
+
+`make security` ahora:
+
+![make security sin vulnerabilidades](reports/figures/semana7/make_security_despues.png)
+
+### Integración continua
+
+Cada PR a `main` corre `make lint`, `make test` y `make security` en GitHub Actions
+(`.github/workflows/ci.yml`), con un job por comando para ver por separado cuál falla.
+`make validar-datos` no corre ahí porque necesita los datos de MiBici, que no se versionan, pero
+`tests/test_validacion.py` sí, con datos sintéticos.
+
+![Checks de un PR con lint, test y security en verde](reports/figures/semana7/ci_checks.png)
+
 ## Configuración
 
 Todo lo que define una ejecución vive en `mi_bici/config.py`: rutas, URLs de los datos, periodo y
@@ -252,6 +413,8 @@ estable en P3 sin mover el alias a mano.
 | Variables sin fuga de información | Las variables usan solo información disponible antes del momento a predecir |
 | Pruebas y estilo | Pruebas unitarias en `tests/` y formato del código y de las pruebas revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
+| Datos validados | DeepChecks revisa la integridad de los datos y el drift entre entrenamiento y prueba con `make validar-datos` |
+| Chequeos de seguridad | `make security` corre bandit y pip-audit en cada PR, y `tests/test_repositorio.py` revisa que no se versionen secretos ni datos |
 | Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
 
@@ -282,7 +445,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── reports/                 # reporte de la propuesta y figures/
 ├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make train, make experimentos, make registry, make test, make test-fast, make lint, make security
+├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make test, make test-fast, make lint, make security
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking

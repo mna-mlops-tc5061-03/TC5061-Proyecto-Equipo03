@@ -303,10 +303,11 @@ def parse_datetime_series(series: pd.Series) -> pd.Series:
     if valido.empty:
         return pd.to_datetime(series)
 
-    # El formato se toma del primer valor con fecha, no del primero de la serie: si ese fuera texto
-    # inválido, el respaldo con dayfirst confundiría el día con el mes en las fechas ISO
+    # El formato se toma del primer valor que empieza como fecha (dígitos y luego - o /), no del
+    # primero de la serie: con texto inválido como "N/A" al inicio, el respaldo con dayfirst
+    # confundiría el día con el mes, o el formato con diagonal dejaría vacías las fechas ISO
     muestra = valido.head(1000).astype(str).str.strip()
-    con_fecha = muestra[muestra.str.contains(r"[-/]")]
+    con_fecha = muestra[muestra.str.match(r"\d{1,4}[-/]")]
     primer_valor = con_fecha.iloc[0] if not con_fecha.empty else muestra.iloc[0]
     if "-" in primer_valor:
         # Formato ISO (YYYY-MM-DD HH:MM:SS, YYYY-MM-DD HH:MM, o ISO con T) a velocidad nativa en C

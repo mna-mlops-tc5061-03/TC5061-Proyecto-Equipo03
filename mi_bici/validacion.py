@@ -324,6 +324,7 @@ def validar_drift(
     tipo_etiqueta: str | None = None,
     fecha: str | None = None,
     html: Path | None = None,
+    nombre: str | None = None,
 ) -> dict:
     """Revisa si los datos de prueba se parecen a los de entrenamiento.
 
@@ -336,6 +337,7 @@ def validar_drift(
         tipo_etiqueta: `"regression"`, `"binary"` o `"multiclass"`. Si es `None`, se infiere.
         fecha: Columna de fecha. Sirve para revisar que la prueba sea posterior al entrenamiento.
         html: Ruta donde guardar el reporte HTML. Si es `None` no se guarda.
+        nombre: Nombre de la tabla en el resumen, como `P1`. Si es `None`, se usa `etiqueta`.
 
     Returns:
         El resumen de `resumir`, más el puntaje de drift de cada variable y del objetivo, y la
@@ -358,7 +360,7 @@ def validar_drift(
         html.parent.mkdir(parents=True, exist_ok=True)
         resultado.save_as_html(str(html), as_widget=False)
 
-    resumen = resumir(resultado, etiqueta, len(train) + len(test), list(train.columns))
+    resumen = resumir(resultado, nombre or etiqueta, len(train) + len(test), list(train.columns))
     resumen["filas_entrenamiento"], resumen["filas_prueba"] = len(train), len(test)
     resumen["objetivo"] = {
         "nombre": etiqueta,
@@ -405,6 +407,21 @@ def guardar_resumen(seccion: str, contenido: dict, ruta: Path = RESUMEN_FILE) ->
     ruta.write_text(json.dumps(resumen, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def reportar(nombre: str, resumen: dict) -> bool:
+    """Escribe cuántas condiciones pasan, cuáles no y qué chequeos no corrieron.
+
+    Returns:
+        `True` si pasan todas las condiciones de la tabla.
+    """
+    total = len(resumen["condiciones"])
+    logger.info(f"{nombre}: {total - len(resumen['no_pasaron'])} de {total} condiciones pasan")
+    for condicion in resumen["no_pasaron"]:
+        logger.warning(f"{nombre}: {condicion['condicion']} -> {condicion['detalle']}")
+    for chequeo in resumen["no_corrieron"]:
+        logger.warning(f"{nombre}: {chequeo['chequeo']} no corrió -> {chequeo['motivo']}")
+    return resumen["paso"]
+
+
 @app.callback()
 def main() -> None:
     """Validación de los datos procesados con DeepChecks."""
@@ -422,10 +439,11 @@ def integridad() -> None:
         resultados[nombre] = validar_integridad(
             df, nombre, html=DEEPCHECKS_DIR / f"integridad_{nombre}.html"
         )
-        for condicion in resultados[nombre]["no_pasaron"]:
-            logger.warning(f"{nombre}: {condicion['condicion']} -> {condicion['detalle']}")
+    pasan = [reportar(nombre, resumen) for nombre, resumen in resultados.items()]
     guardar_resumen("integridad", resultados)
     logger.success(f"Resumen guardado en {RESUMEN_FILE}")
+    if not all(pasan):
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -445,16 +463,18 @@ def drift() -> None:
             tipo_etiqueta=cfg["tipo"],
             fecha=cfg["fecha"],
             html=DEEPCHECKS_DIR / f"drift_{pregunta.lower()}.html",
+            nombre=pregunta,
         )
         objetivo = resultados[pregunta]["objetivo"]
         logger.info(
             f"{pregunta}: media de {objetivo['nombre']} {objetivo['media_entrenamiento']:.4f} en "
             f"entrenamiento y {objetivo['media_prueba']:.4f} en prueba"
         )
-        for condicion in resultados[pregunta]["no_pasaron"]:
-            logger.warning(f"{pregunta}: {condicion['condicion']} -> {condicion['detalle']}")
+    pasan = [reportar(pregunta, resumen) for pregunta, resumen in resultados.items()]
     guardar_resumen("drift", resultados)
     logger.success(f"Resumen guardado en {RESUMEN_FILE}")
+    if not all(pasan):
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

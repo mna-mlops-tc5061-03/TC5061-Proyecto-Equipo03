@@ -223,6 +223,10 @@ MODELOS_REGISTRO = {
 ALIAS_PRODUCCION = "champion"
 ALIAS_RESPALDO = "challenger"
 
+# API: modelo que sirve. MODELO_URI acepta una URI del Registry (con alias o versión) o una carpeta
+# con el modelo, por si se empaqueta en la imagen
+MODELO_URI = os.getenv("MODELO_URI", f"models:/{MODELOS_REGISTRO['P2']}@{ALIAS_PRODUCCION}")
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:

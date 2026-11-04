@@ -408,6 +408,91 @@ dejar grupos de una sola estación y hasta el 96 % de las estaciones en un solo 
 y `train_grupo_menor_min >= 0.05` en las 10 semillas de `SEMILLAS_ESTABILIDAD`) y elige un
 `champion` estable en P3 sin mover el alias a mano.
 
+## Despliegue de la API con Docker
+
+La imagen empaca únicamente las dependencias de inferencia (`requirements-api.txt`) y el código de
+`mi_bici/`, corriendo `uvicorn` con un usuario sin privilegios.
+
+### 1. Levantar el servidor de MLflow accesible desde el contenedor
+
+```bash
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --artifacts-destination ./mlartifacts \
+  --host 0.0.0.0 \
+  --port 5001 \
+  --allowed-hosts "*"
+```
+
+| Parámetro | Para qué sirve |
+|---|---|
+| `--backend-store-uri sqlite:///mlflow.db` | Base SQLite local donde viven los experimentos y el Model Registry |
+| `--artifacts-destination ./mlartifacts` | Carpeta desde la que el servidor entrega los artefactos y el modelo serializado |
+| `--host 0.0.0.0` | Escucha en todas las interfaces de red para que el contenedor pueda conectarse al host |
+| `--port 5001` | Puerto del servidor (evita el puerto `5000` que usa AirPlay en macOS) |
+| `--allowed-hosts "*"` | Permite peticiones con el header `Host: host.docker.internal:5001` que bloquea por defecto el filtro de DNS rebinding de MLflow 3 |
+
+### 2. Construir y correr el contenedor
+
+```bash
+docker build -t mibici-api .
+
+docker run --rm -p 8000:8000 \
+  -e MLFLOW_TRACKING_URI=http://host.docker.internal:5001 \
+  -e MODELO_URI=models:/mibici-equipo03-p2-riesgo@champion \
+  mibici-api
+```
+
+| Parámetro | Para qué sirve |
+|---|---|
+| `--rm` | Elimina el contenedor al detenerlo |
+| `-p 8000:8000` | Publica el puerto `8000` de FastAPI en `http://127.0.0.1:8000` |
+| `-e MLFLOW_TRACKING_URI=...` | Dirección del servidor de MLflow vista desde dentro del contenedor (`http://host.docker.internal:5001` en Docker; en Linux agregar `--add-host=host.docker.internal:host-gateway`; con Podman usar `http://host.containers.internal:5001`) |
+| `-e MODELO_URI=...` | Modelo y alias (o versión/ruta) que la API descarga al arrancar |
+
+### 3. Probar la API
+
+Verificar el estado del servicio y la versión cargada:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Solicitar predicciones de riesgo (`POST /predict/riesgo`):
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/predict/riesgo \
+  -H "Content-Type: application/json" \
+  -d '{
+    "observaciones": [
+      {
+        "flujo_neto_lag_1": -1.0,
+        "flujo_neto_lag_2": 0.0,
+        "salidas_lag_1": 1.0,
+        "llegadas_lag_1": 0.0,
+        "riesgo_semana_anterior": 0.0,
+        "hora": 6,
+        "dia_semana": 2,
+        "festivo": false,
+        "capacidad": 15
+      },
+      {
+        "flujo_neto_lag_1": -12.0,
+        "flujo_neto_lag_2": -9.0,
+        "salidas_lag_1": 18.0,
+        "llegadas_lag_1": 6.0,
+        "riesgo_semana_anterior": 1.0,
+        "hora": 18,
+        "dia_semana": 4,
+        "festivo": false,
+        "capacidad": 15
+      }
+    ]
+  }' | python3 -m json.tool
+```
+
+La documentación interactiva queda disponible en http://127.0.0.1:8000/docs.
+
 ## Buenas prácticas aplicadas
 
 | Práctica | Cómo se aplica |

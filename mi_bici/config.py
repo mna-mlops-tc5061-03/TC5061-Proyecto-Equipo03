@@ -226,6 +226,9 @@ ALIAS_RESPALDO = "challenger"
 # API: modelo que sirve. MODELO_URI acepta una URI del Registry (con alias o versión) o una carpeta
 # con el modelo, por si se empaqueta en la imagen
 MODELO_URI = os.getenv("MODELO_URI", f"models:/{MODELOS_REGISTRO['P2']}@{ALIAS_PRODUCCION}")
+# Máximo de observaciones por petición. Las 484 estaciones de la nomenclatura de sep 2026 caben en
+# una sola, con margen por si se agregan más
+MAX_OBSERVACIONES = 1000
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135

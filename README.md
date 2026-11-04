@@ -434,6 +434,16 @@ mlflow server \
 
 ### 2. Construir y correr el contenedor
 
+Con el `Makefile` (por defecto usa Docker; con `MOTOR=podman` usa Podman):
+
+```bash
+make image                  # construye la imagen (o make image MOTOR=podman)
+make container              # corre el contenedor (o make container MOTOR=podman)
+make api                    # opcional: levanta la API localmente con uvicorn sin contenedor
+```
+
+O directamente con los comandos de `docker`:
+
 ```bash
 docker build -t mibici-api .
 

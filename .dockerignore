@@ -1,0 +1,30 @@
+# Datos, corridas y artefactos locales de MLflow (Podman también lee este archivo)
+data/
+mlruns/
+mlartifacts/
+mlflow.db
+models/
+
+# Entorno virtual y variables con credenciales
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Exploración, reportes, documentación y pruebas
+reports/
+notebooks/
+docs/
+references/
+tests/
+
+# Control de versiones y cachés
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+

@@ -105,7 +105,7 @@ def predecir_riesgo(solicitud: SolicitudRiesgo, request: Request) -> RespuestaRi
     probabilidad = servicio["clasificador"].predict_proba(datos)[:, 1]
     return RespuestaRiesgo(
         predicciones=[
-            PrediccionRiesgo(riesgo=int(r), probabilidad=float(p))
+            PrediccionRiesgo(riesgo=bool(r), probabilidad=float(p))
             for r, p in zip(riesgo, probabilidad)
         ],
         umbral=float(servicio["clasificador"].threshold),

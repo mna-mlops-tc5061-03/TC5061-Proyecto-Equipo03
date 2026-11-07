@@ -354,7 +354,12 @@ entorno. Así, con los mismos datos, `make data` deja el mismo manifiesto en cua
 El Model Registry necesita un backend con base de datos, así que levantamos un servidor local con SQLite:
 
 ```bash
-mlflow server --backend-store-uri sqlite:///mlflow.db --artifacts-destination ./mlartifacts --port 5001
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --artifacts-destination ./mlartifacts \
+  --host 0.0.0.0 \
+  --port 5001 \
+  --allowed-hosts "host.docker.internal:5001,host.containers.internal:5001,localhost:5001,127.0.0.1:5001"
 ```
 
 Luego copia las variables de entorno:
@@ -421,7 +426,7 @@ mlflow server \
   --artifacts-destination ./mlartifacts \
   --host 0.0.0.0 \
   --port 5001 \
-  --allowed-hosts "*"
+  --allowed-hosts "host.docker.internal:5001,host.containers.internal:5001,localhost:5001,127.0.0.1:5001"
 ```
 
 | Parámetro | Para qué sirve |
@@ -430,7 +435,7 @@ mlflow server \
 | `--artifacts-destination ./mlartifacts` | Carpeta desde la que el servidor entrega los artefactos y el modelo serializado |
 | `--host 0.0.0.0` | Escucha en todas las interfaces de red para que el contenedor pueda conectarse al host |
 | `--port 5001` | Puerto del servidor (evita el puerto `5000` que usa AirPlay en macOS) |
-| `--allowed-hosts "*"` | Permite peticiones con el header `Host: host.docker.internal:5001` que bloquea por defecto el filtro de DNS rebinding de MLflow 3 |
+| `--allowed-hosts "..."` | Autoriza los headers `Host` locales y del contenedor (`host.docker.internal`, `host.containers.internal`, `localhost`, `127.0.0.1`) en el filtro de DNS rebinding de MLflow 3 |
 
 ### 2. Construir y correr el contenedor
 
@@ -438,6 +443,7 @@ mlflow server \
 docker build -t mibici-api .
 
 docker run --rm -p 8000:8000 \
+  --add-host=host.docker.internal:host-gateway \
   -e MLFLOW_TRACKING_URI=http://host.docker.internal:5001 \
   -e MODELO_URI=models:/mibici-equipo03-p2-riesgo@champion \
   mibici-api
@@ -447,7 +453,8 @@ docker run --rm -p 8000:8000 \
 |---|---|
 | `--rm` | Elimina el contenedor al detenerlo |
 | `-p 8000:8000` | Publica el puerto `8000` de FastAPI en `http://127.0.0.1:8000` |
-| `-e MLFLOW_TRACKING_URI=...` | Dirección del servidor de MLflow vista desde dentro del contenedor (`http://host.docker.internal:5001` en Docker; en Linux agregar `--add-host=host.docker.internal:host-gateway`; con Podman usar `http://host.containers.internal:5001`) |
+| `--add-host=host.docker.internal:host-gateway` | Mapea `host.docker.internal` a la IP del host (necesario en Linux; Docker Desktop en macOS y Windows lo define automáticamente) |
+| `-e MLFLOW_TRACKING_URI=...` | Dirección del servidor de MLflow vista desde dentro del contenedor (`http://host.docker.internal:5001` en Docker; con Podman usar `http://host.containers.internal:5001`) |
 | `-e MODELO_URI=...` | Modelo y alias (o versión/ruta) que la API descarga al arrancar |
 
 ### 3. Probar la API

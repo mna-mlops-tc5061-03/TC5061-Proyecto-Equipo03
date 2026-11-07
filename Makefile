@@ -75,10 +75,18 @@ create_environment:
 #################################################################################
 
 ARGS ?=
+MOTOR ?= docker
+IMAGE_NAME ?= mibici-api
+PORT ?= 8000
 
 # mlflow run le pasa a cada corrida la URI de la terminal, así que se toma la del .env
 -include .env
 export MLFLOW_TRACKING_URI
+
+# Desde dentro del contenedor, 127.0.0.1 es el propio contenedor; se cambia por el host según el motor
+HOST_CONTENEDOR = $(if $(filter podman,$(MOTOR)),host.containers.internal,host.docker.internal)
+TRACKING_CONTENEDOR = $(subst localhost,$(HOST_CONTENEDOR),$(subst 127.0.0.1,$(HOST_CONTENEDOR),$(or $(MLFLOW_TRACKING_URI),http://127.0.0.1:5001)))
+EXTRA_CONTENEDOR = $(if $(filter podman,$(MOTOR)),,--add-host=host.docker.internal:host-gateway)
 
 # Mismo experimento que EXPERIMENT_NAME en config.py; --env-manager local usa el .venv activo
 MLFLOW_RUN = mlflow run . --env-manager local --experiment-name mibici-equipo03
@@ -127,6 +135,27 @@ registry:
 validar-datos:
 	$(PYTHON_INTERPRETER) -m mi_bici.validacion integridad
 	$(PYTHON_INTERPRETER) -m mi_bici.validacion drift
+
+
+## Levanta la API localmente con uvicorn
+.PHONY: api
+api:
+	uvicorn mi_bici.api.app:app --host 127.0.0.1 --port $(PORT)
+
+
+## Construye la imagen de la API (usa MOTOR=podman para Podman)
+.PHONY: image
+image:
+	$(MOTOR) build -t $(IMAGE_NAME) .
+
+
+## Corre el contenedor de la API con el puerto y las variables de entorno
+.PHONY: container
+container:
+	$(MOTOR) run --rm -p $(PORT):8000 $(EXTRA_CONTENEDOR) \
+		-e MLFLOW_TRACKING_URI=$(TRACKING_CONTENEDOR) \
+		$(if $(MODELO_URI),-e MODELO_URI=$(MODELO_URI)) \
+		$(IMAGE_NAME)
 
 
 ## Make dataset

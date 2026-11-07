@@ -43,7 +43,9 @@ class TestCasosNormales:
 class TestCasosLimite:
     @pytest.mark.parametrize("dia_semana", [0, 6])
     def test_dias_extremos_son_validos(self, cliente, dia_semana):
-        respuesta = cliente.post(RUTA, json={"observaciones": [observacion(dia_semana=dia_semana)]})
+        respuesta = cliente.post(
+            RUTA, json={"observaciones": [observacion(dia_semana=dia_semana)]}
+        )
 
         assert respuesta.status_code == 200
 

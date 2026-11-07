@@ -228,9 +228,7 @@ ALIAS_RESPALDO = "challenger"
 MODELO_URI = os.getenv("MODELO_URI", f"models:/{MODELOS_REGISTRO['P2']}@{ALIAS_PRODUCCION}")
 # Modelo de cada pregunta de la API. MODELO_URI sigue siendo el de P2
 MODELOS_URI = {
-    "demanda": os.getenv(
-        "MODELO_URI_P1", f"models:/{MODELOS_REGISTRO['P1']}@{ALIAS_PRODUCCION}"
-    ),
+    "demanda": os.getenv("MODELO_URI_P1", f"models:/{MODELOS_REGISTRO['P1']}@{ALIAS_PRODUCCION}"),
     "riesgo": MODELO_URI,
 }
 # Máximo de observaciones por petición. Las 484 estaciones de la nomenclatura de sep 2026 caben en

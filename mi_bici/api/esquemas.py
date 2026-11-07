@@ -81,7 +81,9 @@ class ObservacionDemanda(BaseModel):
     viajes_lag_7: float = Field(
         ge=0, description="Viajes que salieron el mismo día de la semana anterior"
     )
-    viajes_media_7: float = Field(ge=0, description="Media de viajes diarios de los últimos 7 días")
+    viajes_media_7: float = Field(
+        ge=0, description="Media de viajes diarios de los últimos 7 días"
+    )
     dia_semana: int = Field(ge=0, le=6, description="Día de la semana: 0 es lunes y 6 domingo")
     festivo: bool = Field(description="Si el día es de descanso obligatorio")
     capacidad: int = Field(gt=0, description="Anclajes de la estación")

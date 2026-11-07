@@ -78,7 +78,6 @@ ARGS ?=
 MOTOR ?= docker
 IMAGE_NAME ?= mibici-api
 PORT ?= 8000
-MODELO_URI ?= models:/mibici-equipo03-p2-riesgo@champion
 
 # mlflow run le pasa a cada corrida la URI de la terminal, así que se toma la del .env
 -include .env
@@ -141,7 +140,7 @@ validar-datos:
 ## Levanta la API localmente con uvicorn
 .PHONY: api
 api:
-	uvicorn mi_bici.api.app:app --host 0.0.0.0 --port $(PORT)
+	uvicorn mi_bici.api.app:app --host 127.0.0.1 --port $(PORT)
 
 
 ## Construye la imagen de la API (usa MOTOR=podman para Podman)
@@ -155,7 +154,7 @@ image:
 container:
 	$(MOTOR) run --rm -p $(PORT):8000 $(EXTRA_CONTENEDOR) \
 		-e MLFLOW_TRACKING_URI=$(TRACKING_CONTENEDOR) \
-		-e MODELO_URI=$(MODELO_URI) \
+		$(if $(MODELO_URI),-e MODELO_URI=$(MODELO_URI)) \
 		$(IMAGE_NAME)
 
 

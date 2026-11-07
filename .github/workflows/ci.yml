@@ -50,10 +50,12 @@ jobs:
       - name: Construir la imagen con make image
         run: make image
 
-      - name: Levantar el contenedor con un modelo de prueba y verificar /health
+      - name: Levantar el contenedor con un modelo de prueba y verificar /health y /predict/riesgo
         run: |
           mkdir -p /tmp/prueba && chmod 777 /tmp/prueba
           docker run --rm -v /tmp/prueba:/tmp/prueba mibici-api python -c "
+          import json
+          from pathlib import Path
           import mlflow.sklearn
           from mlflow.models import infer_signature
           import pandas as pd
@@ -63,7 +65,10 @@ jobs:
           from mi_bici.api.esquemas import EJEMPLO_P2
           from mi_bici.config import VARIABLES_P2
 
-          X = pd.DataFrame(EJEMPLO_P2)[VARIABLES_P2]
+          # Mismos tipos que la firma real de flujo_por_bloque (int32 en hora/dia_semana, int64 en festivo)
+          X = pd.DataFrame(EJEMPLO_P2)[VARIABLES_P2].astype(
+              {'hora': 'int32', 'dia_semana': 'int32', 'festivo': 'int64'}
+          )
           clf = LogisticRegression().fit(X, [0, 0, 1])
           modelo = FixedThresholdClassifier(
               FrozenEstimator(clf), threshold=0.5, response_method='predict_proba'
@@ -71,6 +76,7 @@ jobs:
           mlflow.sklearn.save_model(
               modelo, '/tmp/prueba/modelo', signature=infer_signature(X, modelo.predict(X))
           )
+          Path('/tmp/prueba/solicitud.json').write_text(json.dumps({'observaciones': EJEMPLO_P2}))
           "
           docker run -d --name mibici-api-test -p 8000:8000 \
             -v /tmp/prueba/modelo:/tmp/modelo:ro \
@@ -79,8 +85,13 @@ jobs:
           for i in $(seq 1 15); do
             if curl -fsS http://127.0.0.1:8000/health | grep -q '"estado":"ok"'; then
               curl -fsS http://127.0.0.1:8000/health
-              docker rm -f mibici-api-test
-              exit 0
+              if curl -fsS -X POST http://127.0.0.1:8000/predict/riesgo \
+                -H "Content-Type: application/json" \
+                -d @/tmp/prueba/solicitud.json | grep -q '"predicciones":'; then
+                docker rm -f mibici-api-test
+                exit 0
+              fi
+              break
             fi
             sleep 1
           done

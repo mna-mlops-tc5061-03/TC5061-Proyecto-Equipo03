@@ -15,6 +15,7 @@ jupyter==1.1.1
 requests==2.33.0
 pytest==9.1.1
 fastapi==0.143.3
+pydantic==2.14.1
 uvicorn==0.54.0
 bandit==1.9.4
 pip-audit==2.10.1

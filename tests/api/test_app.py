@@ -1,4 +1,4 @@
-"""Pruebas del servicio de P2 con un modelo falso (ver conftest.py)."""
+"""Pruebas de POST /predict/riesgo (P2) con un modelo falso (ver conftest.py)."""
 
 import copy
 
@@ -21,17 +21,6 @@ def lote(n: int) -> dict:
 
 
 class TestCasosNormales:
-    def test_health_muestra_el_modelo_cargado(self, cliente):
-        respuesta = cliente.get("/health")
-
-        assert respuesta.status_code == 200
-        assert respuesta.json() == {
-            "estado": "ok",
-            "modelo": "mibici-equipo03-p2-riesgo",
-            "version": "7",
-            "alias": "champion",
-        }
-
     def test_una_observacion(self, cliente):
         respuesta = cliente.post(RUTA, json={"observaciones": [observacion(salidas_lag_1=18.0)]})
 
@@ -116,16 +105,13 @@ class TestCasosLimite:
 
         assert respuesta.status_code == 422
 
-    def test_el_modelo_no_se_llama_si_la_entrada_es_invalida(self, cliente, servicio):
+    def test_el_modelo_no_se_llama_si_la_entrada_es_invalida(self, cliente, servicio_riesgo):
         cliente.post(RUTA, json={"observaciones": [observacion(hora=24)]})
 
-        assert servicio["modelo"].ultimos_datos is None
+        assert servicio_riesgo["modelo"].ultimos_datos is None
 
 
 class TestSinModelo:
-    def test_health_da_503(self, cliente_sin_modelo):
-        assert cliente_sin_modelo.get("/health").status_code == 503
-
     def test_predict_da_503(self, cliente_sin_modelo):
         respuesta = cliente_sin_modelo.post(RUTA, json=lote(1))
 
@@ -133,15 +119,15 @@ class TestSinModelo:
 
 
 class TestConversionDeTipos:
-    def test_columnas_llegan_en_el_orden_de_la_firma(self, cliente, servicio):
+    def test_columnas_llegan_en_el_orden_de_la_firma(self, cliente, servicio_riesgo):
         cliente.post(RUTA, json=lote(2))
 
-        assert list(servicio["modelo"].ultimos_datos.columns) == VARIABLES_P2
+        assert list(servicio_riesgo["modelo"].ultimos_datos.columns) == VARIABLES_P2
 
-    def test_columnas_llegan_con_los_tipos_de_la_firma(self, cliente, servicio):
+    def test_columnas_llegan_con_los_tipos_de_la_firma(self, cliente, servicio_riesgo):
         cliente.post(RUTA, json=lote(2))
 
-        datos = servicio["modelo"].ultimos_datos
+        datos = servicio_riesgo["modelo"].ultimos_datos
         assert datos["hora"].dtype == np.int32
         assert datos["dia_semana"].dtype == np.int32
         assert datos["capacidad"].dtype == np.int32

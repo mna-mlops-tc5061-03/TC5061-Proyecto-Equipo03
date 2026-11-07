@@ -226,6 +226,13 @@ ALIAS_RESPALDO = "challenger"
 # API: modelo que sirve. MODELO_URI acepta una URI del Registry (con alias o versión) o una carpeta
 # con el modelo, por si se empaqueta en la imagen
 MODELO_URI = os.getenv("MODELO_URI", f"models:/{MODELOS_REGISTRO['P2']}@{ALIAS_PRODUCCION}")
+# Modelo de cada pregunta de la API. MODELO_URI sigue siendo el de P2
+MODELOS_URI = {
+    "demanda": os.getenv(
+        "MODELO_URI_P1", f"models:/{MODELOS_REGISTRO['P1']}@{ALIAS_PRODUCCION}"
+    ),
+    "riesgo": MODELO_URI,
+}
 # Máximo de observaciones por petición. Las 484 estaciones de la nomenclatura de sep 2026 caben en
 # una sola, con margen por si se agregan más
 MAX_OBSERVACIONES = 1000

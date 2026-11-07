@@ -19,6 +19,7 @@ from mi_bici.modeling.base import version_datos
 from mi_bici.modeling.p1_demanda import ExperimentoDemanda
 from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo
 from mi_bici.modeling.p3_grupos import ExperimentoGrupos
+from mi_bici.seguimiento import conectar_mlflow
 
 app = typer.Typer()
 
@@ -64,7 +65,7 @@ def mejores_params(pregunta: str, modelo: str) -> str:
     Raises:
         ValueError: Si no hay una búsqueda terminada de ese modelo con la misma `data_version`.
     """
-    mlflow.set_tracking_uri(TRACKING_URI)
+    conectar_mlflow(TRACKING_URI)
     filtro = (
         f"tags.question = '{pregunta.lower()}' and tags.stage_of_work = 'search' "
         f"and params.modelo = '{modelo}' and params.data_version = '{version_datos()}' "

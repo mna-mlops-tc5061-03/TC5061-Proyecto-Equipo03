@@ -37,6 +37,7 @@ from mi_bici.config import (
     SEMILLA,
     TRACKING_URI,
 )
+from mi_bici.seguimiento import conectar_mlflow
 
 # Las variables enteras (rezagos, hora, día) no tienen faltantes, así que el aviso de MLflow
 # sobre columnas enteras en la firma del modelo no aplica
@@ -313,7 +314,7 @@ class ExperimentoBase(ABC):
         else:
             metricas |= self.evaluar(self.test, "test")
 
-        mlflow.set_tracking_uri(TRACKING_URI)
+        conectar_mlflow(TRACKING_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)
         with mlflow.start_run(run_name=f"{self.pregunta}-{self.clave}") as run:
             mlflow.set_tags(self.etiquetas())
@@ -386,7 +387,7 @@ class ExperimentoBase(ABC):
 
         self.preparar()
         self.etapa = "search"
-        mlflow.set_tracking_uri(TRACKING_URI)
+        conectar_mlflow(TRACKING_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)
         resultados = []
         with mlflow.start_run(run_name=f"{self.pregunta}-{self.clave}-busqueda") as padre:

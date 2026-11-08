@@ -314,6 +314,7 @@ class ExperimentoBase(ABC):
         else:
             metricas |= self.evaluar(self.test, "test")
 
+        # Se pasa TRACKING_URI para que el monkeypatch de test_search.py tenga efecto
         conectar_mlflow(TRACKING_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)
         with mlflow.start_run(run_name=f"{self.pregunta}-{self.clave}") as run:
@@ -387,6 +388,7 @@ class ExperimentoBase(ABC):
 
         self.preparar()
         self.etapa = "search"
+        # Se pasa TRACKING_URI para que el monkeypatch de test_search.py tenga efecto
         conectar_mlflow(TRACKING_URI)
         mlflow.set_experiment(EXPERIMENT_NAME)
         resultados = []

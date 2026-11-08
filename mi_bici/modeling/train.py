@@ -65,6 +65,7 @@ def mejores_params(pregunta: str, modelo: str) -> str:
     Raises:
         ValueError: Si no hay una búsqueda terminada de ese modelo con la misma `data_version`.
     """
+    # Se pasa TRACKING_URI para que el monkeypatch de test_search.py tenga efecto
     conectar_mlflow(TRACKING_URI)
     filtro = (
         f"tags.question = '{pregunta.lower()}' and tags.stage_of_work = 'search' "

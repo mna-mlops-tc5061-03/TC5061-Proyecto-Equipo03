@@ -8,25 +8,32 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mi_bici.config import BLOQUE_HORAS, MAX_OBSERVACIONES
 
-# Las filas del serving_input_example del champion de P1, para que /docs traiga un ejemplo que
+# Las 3 filas del serving_input_example del champion de P1, para que /docs traiga un ejemplo que
 # funciona tal cual
-# TODO: reemplazar con las filas reales del serving_input_example.json de P1
 EJEMPLO_P1 = [
     {
-        "viajes_lag_1": 42.0,
-        "viajes_lag_7": 38.0,
-        "viajes_media_7": 40.3,
+        "viajes_lag_1": 56.0,
+        "viajes_lag_7": 54.0,
+        "viajes_media_7": 50.714285714285715,
         "dia_semana": 2,
         "festivo": False,
         "capacidad": 15,
     },
     {
-        "viajes_lag_1": 5.0,
-        "viajes_lag_7": 0.0,
-        "viajes_media_7": 3.1,
-        "dia_semana": 6,
-        "festivo": True,
-        "capacidad": 12,
+        "viajes_lag_1": 70.0,
+        "viajes_lag_7": 59.0,
+        "viajes_media_7": 53.0,
+        "dia_semana": 3,
+        "festivo": False,
+        "capacidad": 15,
+    },
+    {
+        "viajes_lag_1": 61.0,
+        "viajes_lag_7": 71.0,
+        "viajes_media_7": 53.285714285714285,
+        "dia_semana": 4,
+        "festivo": False,
+        "capacidad": 15,
     },
 ]
 

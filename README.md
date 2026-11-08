@@ -518,10 +518,26 @@ curl -s -X POST http://127.0.0.1:8000/predict/demanda \
   -d '{
     "observaciones": [
       {
-        "viajes_lag_1": 42.0,
-        "viajes_lag_7": 38.0,
-        "viajes_media_7": 40.3,
+        "viajes_lag_1": 56.0,
+        "viajes_lag_7": 54.0,
+        "viajes_media_7": 50.714285714285715,
         "dia_semana": 2,
+        "festivo": false,
+        "capacidad": 15
+      },
+      {
+        "viajes_lag_1": 70.0,
+        "viajes_lag_7": 59.0,
+        "viajes_media_7": 53.0,
+        "dia_semana": 3,
+        "festivo": false,
+        "capacidad": 15
+      },
+      {
+        "viajes_lag_1": 61.0,
+        "viajes_lag_7": 71.0,
+        "viajes_media_7": 53.285714285714285,
+        "dia_semana": 4,
         "festivo": false,
         "capacidad": 15
       }

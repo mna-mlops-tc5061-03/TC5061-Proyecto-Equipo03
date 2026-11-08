@@ -23,8 +23,8 @@ from mi_bici.config import (
     EXPERIMENT_NAME,
     METRICA_SELECCION,
     MODELOS_REGISTRO,
-    TRACKING_URI,
 )
+from mi_bici.seguimiento import conectar_mlflow
 
 app = typer.Typer()
 
@@ -316,7 +316,7 @@ def main(question: str = typer.Option("todas", help="p1, p2, p3 o todas")) -> No
     if pregunta not in (*MODELOS_REGISTRO, "TODAS"):
         raise typer.BadParameter(f"question debe ser una de {[*MODELOS_REGISTRO, 'todas']}")
 
-    mlflow.set_tracking_uri(TRACKING_URI)
+    conectar_mlflow()
     runs, cliente = buscar_runs(), MlflowClient()
     fallas = []
     for p in MODELOS_REGISTRO if pregunta == "TODAS" else [pregunta]:

@@ -14,7 +14,8 @@ from mlflow.exceptions import MlflowException
 import pandas as pd
 
 from mi_bici.api.esquemas import PrediccionRiesgo, RespuestaRiesgo, Salud, SolicitudRiesgo
-from mi_bici.config import MODELO_URI, TRACKING_URI, VARIABLES_P2
+from mi_bici.config import MODELO_URI, VARIABLES_P2
+from mi_bici.seguimiento import conectar_mlflow
 
 
 def cargar_modelo(uri: str = MODELO_URI) -> dict:
@@ -31,7 +32,7 @@ def cargar_modelo(uri: str = MODELO_URI) -> dict:
         El modelo de pyfunc, el clasificador de scikit-learn, los tipos de cada columna de la firma,
         y el nombre, la versión y el alias del modelo.
     """
-    mlflow.set_tracking_uri(TRACKING_URI)
+    conectar_mlflow()
     nombre, version, alias = uri, None, None
     if uri.startswith("models:/"):
         referencia = uri.removeprefix("models:/")

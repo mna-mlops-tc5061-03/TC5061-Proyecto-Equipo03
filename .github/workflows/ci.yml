@@ -50,7 +50,7 @@ jobs:
       - name: Construir la imagen con make image
         run: make image
 
-      - name: Levantar el contenedor con un modelo de prueba y verificar /health y /predict/riesgo
+      - name: Levantar el contenedor con modelos de prueba y verificar /health y cada /predict
         run: |
           mkdir -p /tmp/prueba && chmod 777 /tmp/prueba
           docker run --rm -v /tmp/prueba:/tmp/prueba mibici-api python -c "
@@ -60,12 +60,12 @@ jobs:
           from mlflow.models import infer_signature
           import pandas as pd
           from sklearn.frozen import FrozenEstimator
-          from sklearn.linear_model import LogisticRegression
+          from sklearn.linear_model import LinearRegression, LogisticRegression
           from sklearn.model_selection import FixedThresholdClassifier
-          from mi_bici.api.esquemas import EJEMPLO_P2
-          from mi_bici.config import VARIABLES_P2
+          from mi_bici.api.esquemas import EJEMPLO_P1, EJEMPLO_P2
+          from mi_bici.config import VARIABLES_P1, VARIABLES_P2
 
-          # Mismos tipos que la firma real de flujo_por_bloque (int32 en hora/dia_semana, int64 en festivo)
+          # P2. Mismos tipos que la firma real de flujo_por_bloque (int32 en hora/dia_semana, int64 en festivo)
           X = pd.DataFrame(EJEMPLO_P2)[VARIABLES_P2].astype(
               {'hora': 'int32', 'dia_semana': 'int32', 'festivo': 'int64'}
           )
@@ -77,17 +77,30 @@ jobs:
               modelo, '/tmp/prueba/modelo', signature=infer_signature(X, modelo.predict(X))
           )
           Path('/tmp/prueba/solicitud.json').write_text(json.dumps({'observaciones': EJEMPLO_P2}))
+
+          # P1. Un regresor chico con las variables de VARIABLES_P1
+          X1 = pd.DataFrame(EJEMPLO_P1)[VARIABLES_P1].astype({'dia_semana': 'int32', 'festivo': 'int64'})
+          reg = LinearRegression().fit(X1, X1['viajes_media_7'])
+          mlflow.sklearn.save_model(
+              reg, '/tmp/prueba/modelo_p1', signature=infer_signature(X1, reg.predict(X1))
+          )
+          Path('/tmp/prueba/solicitud_p1.json').write_text(json.dumps({'observaciones': EJEMPLO_P1}))
           "
           docker run -d --name mibici-api-test -p 8000:8000 \
             -v /tmp/prueba/modelo:/tmp/modelo:ro \
+            -v /tmp/prueba/modelo_p1:/tmp/modelo_p1:ro \
             -e MODELO_URI=/tmp/modelo \
+            -e MODELO_URI_P1=/tmp/modelo_p1 \
             mibici-api
           for i in $(seq 1 15); do
             if curl -fsS http://127.0.0.1:8000/health | grep -q '"estado":"ok"'; then
               curl -fsS http://127.0.0.1:8000/health
               if curl -fsS -X POST http://127.0.0.1:8000/predict/riesgo \
                 -H "Content-Type: application/json" \
-                -d @/tmp/prueba/solicitud.json | grep -q '"predicciones":'; then
+                -d @/tmp/prueba/solicitud.json | grep -q '"predicciones":' \
+                && curl -fsS -X POST http://127.0.0.1:8000/predict/demanda \
+                -H "Content-Type: application/json" \
+                -d @/tmp/prueba/solicitud_p1.json | grep -q '"predicciones":'; then
                 docker rm -f mibici-api-test
                 exit 0
               fi

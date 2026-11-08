@@ -456,6 +456,7 @@ docker run --rm -p 8000:8000 \
   --add-host=host.docker.internal:host-gateway \
   -e MLFLOW_TRACKING_URI=http://host.docker.internal:5001 \
   -e MODELO_URI=models:/mibici-equipo03-p2-riesgo@champion \
+  -e MODELO_URI_P1=models:/mibici-equipo03-p1-demanda@champion \
   mibici-api
 ```
 
@@ -465,11 +466,12 @@ docker run --rm -p 8000:8000 \
 | `-p 8000:8000` | Publica el puerto `8000` de FastAPI en `http://127.0.0.1:8000` |
 | `--add-host=host.docker.internal:host-gateway` | Mapea `host.docker.internal` a la IP del host (necesario en Linux; Docker Desktop en macOS y Windows lo define automáticamente) |
 | `-e MLFLOW_TRACKING_URI=...` | Dirección del servidor de MLflow vista desde dentro del contenedor (`http://host.docker.internal:5001` en Docker; con Podman usar `http://host.containers.internal:5001`) |
-| `-e MODELO_URI=...` | Modelo y alias (o versión/ruta) que la API descarga al arrancar |
+| `-e MODELO_URI=...` | Modelo y alias (o versión/ruta) de P2 (riesgo) que la API descarga al arrancar |
+| `-e MODELO_URI_P1=...` | Igual, para el modelo de P1 (demanda) |
 
 ### 3. Probar la API
 
-Verificar el estado del servicio y la versión cargada:
+Verificar el estado del servicio y la versión de cada modelo cargado:
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -500,6 +502,41 @@ curl -s -X POST http://127.0.0.1:8000/predict/riesgo \
         "llegadas_lag_1": 6.0,
         "riesgo_semana_anterior": 1.0,
         "hora": 18,
+        "dia_semana": 4,
+        "festivo": false,
+        "capacidad": 15
+      }
+    ]
+  }' | python3 -m json.tool
+```
+
+Solicitar predicciones de demanda (`POST /predict/demanda`):
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/predict/demanda \
+  -H "Content-Type: application/json" \
+  -d '{
+    "observaciones": [
+      {
+        "viajes_lag_1": 56.0,
+        "viajes_lag_7": 54.0,
+        "viajes_media_7": 50.714285714285715,
+        "dia_semana": 2,
+        "festivo": false,
+        "capacidad": 15
+      },
+      {
+        "viajes_lag_1": 70.0,
+        "viajes_lag_7": 59.0,
+        "viajes_media_7": 53.0,
+        "dia_semana": 3,
+        "festivo": false,
+        "capacidad": 15
+      },
+      {
+        "viajes_lag_1": 61.0,
+        "viajes_lag_7": 71.0,
+        "viajes_media_7": 53.285714285714285,
         "dia_semana": 4,
         "festivo": false,
         "capacidad": 15

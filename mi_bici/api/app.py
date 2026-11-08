@@ -28,7 +28,8 @@ from mi_bici.api.esquemas import (
     SolicitudDemanda,
     SolicitudRiesgo,
 )
-from mi_bici.config import MODELOS_URI, TRACKING_URI, VARIABLES_P1, VARIABLES_P2
+from mi_bici.config import MODELOS_URI, VARIABLES_P1, VARIABLES_P2
+from mi_bici.seguimiento import conectar_mlflow
 
 
 def cargar_modelo(uri: str) -> dict:
@@ -45,7 +46,7 @@ def cargar_modelo(uri: str) -> dict:
         El modelo de pyfunc, el estimador de scikit-learn, los tipos de cada columna de la firma,
         y el nombre, la versión y el alias del modelo.
     """
-    mlflow.set_tracking_uri(TRACKING_URI)
+    conectar_mlflow()
     nombre, version, alias = uri, None, None
     if uri.startswith("models:/"):
         referencia = uri.removeprefix("models:/")

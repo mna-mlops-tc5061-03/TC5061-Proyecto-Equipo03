@@ -101,8 +101,9 @@ class TestCasosLimite:
         assert cliente.post(RUTA, json=lote(MAX_OBSERVACIONES + 1)).status_code == 422
 
     def test_el_modelo_no_se_llama_si_la_entrada_es_invalida(self, cliente, servicio_demanda):
-        cliente.post(RUTA, json={"observaciones": [observacion(dia_semana=7)]})
+        respuesta = cliente.post(RUTA, json={"observaciones": [observacion(dia_semana=7)]})
 
+        assert respuesta.status_code == 422
         assert servicio_demanda["modelo"].ultimos_datos is None
 
 
@@ -122,6 +123,6 @@ class TestConversionDeTipos:
 
         datos = servicio_demanda["modelo"].ultimos_datos
         assert datos["dia_semana"].dtype == np.int32
-        assert datos["capacidad"].dtype == np.int32
-        assert datos["festivo"].dtype == np.bool_
+        assert datos["capacidad"].dtype == np.int64
+        assert datos["festivo"].dtype == np.int64
         assert datos["viajes_media_7"].dtype == np.float64

@@ -13,14 +13,15 @@ import pytest
 
 import mi_bici.api.app as modulo_app
 
-# Tipos de las firmas de los champions: las columnas enteras llegan como int32
+# Tipos de las firmas de los champions: hora y dia_semana son int32, y festivo y capacidad int64
+# (long). features.py arma festivo con .astype(int), por eso no llega como bool
 TIPOS_FIRMA_P1 = {
     "viajes_lag_1": np.dtype("float64"),
     "viajes_lag_7": np.dtype("float64"),
     "viajes_media_7": np.dtype("float64"),
     "dia_semana": np.dtype("int32"),
-    "festivo": np.dtype("bool"),
-    "capacidad": np.dtype("int32"),
+    "festivo": np.dtype("int64"),
+    "capacidad": np.dtype("int64"),
 }
 TIPOS_FIRMA_P2 = {
     "flujo_neto_lag_1": np.dtype("float64"),
@@ -30,8 +31,8 @@ TIPOS_FIRMA_P2 = {
     "riesgo_semana_anterior": np.dtype("float64"),
     "hora": np.dtype("int32"),
     "dia_semana": np.dtype("int32"),
-    "festivo": np.dtype("bool"),
-    "capacidad": np.dtype("int32"),
+    "festivo": np.dtype("int64"),
+    "capacidad": np.dtype("int64"),
 }
 UMBRAL = 0.5
 
@@ -48,6 +49,14 @@ class ClasificadorFalso:
         self.ultimos_datos = datos
         positiva = np.clip(datos["salidas_lag_1"].to_numpy() / 20, 0, 1)
         return np.column_stack([1 - positiva, positiva])
+
+
+class ClasificadorFueraDeRango(ClasificadorFalso):
+    """Devuelve una probabilidad de 1.5, que un clasificador real nunca daría."""
+
+    def predict_proba(self, datos: pd.DataFrame) -> np.ndarray:
+        self.ultimos_datos = datos
+        return np.tile([-0.5, 1.5], (len(datos), 1))
 
 
 class ModeloRiesgoFalso:
@@ -101,8 +110,11 @@ def servicio_demanda() -> dict:
     }
 
 
-def _iniciar(monkeypatch, servicios: dict):
-    """Arranca la app con un `cargar_modelo` que devuelve el servicio de cada URI o falla."""
+def _iniciar(monkeypatch, servicios: dict, **opciones):
+    """Arranca la app con un `cargar_modelo` que devuelve el servicio de cada URI o falla.
+
+    `opciones` se pasan a `TestClient`, por ejemplo `raise_server_exceptions=False`.
+    """
 
     def cargar(uri, *args, **kwargs):
         if servicios.get(uri) is None:
@@ -110,7 +122,7 @@ def _iniciar(monkeypatch, servicios: dict):
         return servicios[uri]
 
     monkeypatch.setattr(modulo_app, "cargar_modelo", cargar)
-    return TestClient(modulo_app.app)
+    return TestClient(modulo_app.app, **opciones)
 
 
 URI_P1 = modulo_app.PREGUNTAS["demanda"].uri
@@ -135,4 +147,20 @@ def cliente_sin_modelo(monkeypatch):
 def cliente_solo_riesgo(servicio_riesgo, monkeypatch):
     """Cliente donde P2 cargó y P1 no, para ver que una pregunta no tumba a la otra."""
     with _iniciar(monkeypatch, {URI_P2: servicio_riesgo}) as c:
+        yield c
+
+
+@pytest.fixture
+def cliente_salida_invalida(servicio_riesgo, monkeypatch):
+    """Cliente cuyo modelo de P2 da una probabilidad fuera de 0 a 1.
+
+    Responde el error como lo haría el servidor, en lugar de lanzar la excepción en la prueba.
+    """
+    clasificador = ClasificadorFueraDeRango()
+    servicio = {
+        **servicio_riesgo,
+        "modelo": ModeloRiesgoFalso(clasificador),
+        "estimador": clasificador,
+    }
+    with _iniciar(monkeypatch, {URI_P2: servicio}, raise_server_exceptions=False) as c:
         yield c

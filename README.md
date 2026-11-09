@@ -330,10 +330,12 @@ make api                    # opcional: levanta la API localmente con uvicorn si
 
 `make container` toma `MLFLOW_TRACKING_URI` del `.env` y cambia `127.0.0.1` o `localhost` por
 `host.docker.internal` (`host.containers.internal` con Podman), así que no hace falta escribir la
-dirección. Sin `MODELO_URI` ni `MODELO_URI_P1`, la API carga el `champion` de cada pregunta. El
-puerto se publica solo en `127.0.0.1`, así que la API responde en esta computadora y no en la red
-local. El contenedor ocupa la terminal con sus logs, que deben decir `Modelo cargado` para los dos
-modelos, y se detiene con Ctrl+C.
+dirección. Sin `MODELO_URI` ni `MODELO_URI_P1`, la API carga el `champion` de cada pregunta; para
+servir otra versión o alias se pasan en la línea de `make` o en el `.env`, por ejemplo
+`make container MODELO_URI_P1=models:/mibici-equipo03-p1-demanda/1`. El puerto se publica solo en
+`127.0.0.1`, así que la API responde en esta computadora y no en la red local. El contenedor ocupa
+la terminal con sus logs, que deben decir `Modelo cargado` para los dos modelos, y se detiene con
+Ctrl+C.
 
 O directamente con los comandos de `docker`:
 
@@ -541,8 +543,8 @@ La documentación interactiva queda disponible en http://127.0.0.1:8000/docs.
 
 | Código | Cuándo | Qué hacer |
 |---|---|---|
-| 422 | La entrada no cumple el esquema: falta un campo o sobra uno, un valor está fuera de rango (por ejemplo `dia_semana` fuera de 0 a 6, `hora` fuera de 0 a 23 o `capacidad` en 0), la lista está vacía o trae más de 1,000 observaciones | Corregir lo que indica `detail`, que dice el campo (`loc`) y la regla que no se cumplió (`msg`) |
-| 503 | El modelo de esa pregunta no cargó al arrancar: el servidor de MLflow está apagado, la `MLFLOW_TRACKING_URI` no es la correcta o el Registry no tiene ese alias | Revisar los logs del contenedor (`No se pudo cargar ...`), corregir y reiniciar el contenedor. La otra pregunta sigue respondiendo; `/health` da 503 mientras falte alguno |
+| 422 | La entrada no cumple el esquema: falta un campo o sobra uno, un valor está fuera de rango (por ejemplo `dia_semana` fuera de 0 a 6, `hora` fuera de 0 a 23 o `capacidad` en 0), un número no es finito (`NaN` o `Infinity`), la lista está vacía o trae más de 1,000 observaciones | Corregir lo que indica `detail`, que dice el campo (`loc`) y la regla que no se cumplió (`msg`) |
+| 503 | El modelo de esa pregunta no cargó al arrancar: el servidor de MLflow está apagado, la `MLFLOW_TRACKING_URI` no es la correcta o el Registry no tiene ese alias | Revisar los logs del contenedor (`No se pudo cargar ...`), corregir y reiniciar el contenedor. La otra pregunta sigue respondiendo; `/health` da 503 mientras falte alguno. Si el servidor está apagado, la API arranca en unos 10 segundos y responde 503, porque el `Dockerfile` limita los reintentos de MLflow (`MLFLOW_HTTP_REQUEST_MAX_RETRIES=2` y `MLFLOW_HTTP_REQUEST_TIMEOUT=10`). Si la dirección no contesta (por ejemplo, una IP equivocada), cada intento espera los 10 s del timeout y tarda más de un minuto |
 
 Por ejemplo, con `dia_semana` en 7:
 
@@ -558,9 +560,9 @@ HTTP/1.1 422 Unprocessable Content
 
 ![Respuesta 422 por un dia_semana fuera de rango](reports/figures/semana8/curl_422.png)
 
-La salida también se valida: `probabilidad` y `umbral` deben estar entre 0 y 1. Si el modelo
-produjera un valor fuera de ese rango, la API responde 500 en lugar de regresarlo.
-`tests/api/test_app.py` lo prueba con un modelo falso que da una probabilidad de 1.5.
+La salida también se valida: `probabilidad` y `umbral` deben estar entre 0 y 1, y `viajes` debe
+ser un número finito. Si el modelo produjera otro valor, la API responde 500 en lugar de regresarlo.
+`tests/api/` lo prueba con modelos falsos que dan una probabilidad de 1.5 y viajes infinitos.
 
 ### Opción elegida para el modelo: el Registry al arrancar
 
@@ -621,7 +623,7 @@ Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno ne
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 211 pruebas de tests/
+make test            # las 236 pruebas de tests/
 make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt
@@ -663,8 +665,8 @@ MiBici y todas corren en el CI.
 | `modeling/test_search.py` | Búsqueda con nested runs y `params=mejor` | 4 |
 | `modeling/test_mlproject.py` | Entradas del `MLproject` con sus valores por defecto | 3 |
 | `modeling/test_reproducibilidad.py` | Mismas predicciones y métricas con la misma semilla | 7 |
-| `api/test_app.py` | `POST /predict/riesgo` con un modelo falso: respuesta, orden del lote y tipos de la firma; 422 por cada campo faltante, fuera de rango o extra, y por un lote vacío o de más de 1,000; 503 sin modelo y la validación de la salida | 34 |
-| `api/test_demanda.py` | `POST /predict/demanda`: lo mismo para P1, incluido el 422 por un campo de P2 | 27 |
+| `api/test_app.py` | `POST /predict/riesgo` con un modelo falso: respuesta, orden del lote y tipos de la firma; 422 por cada campo faltante, fuera de rango, no finito (`NaN` o `Infinity`) o extra, y por un lote vacío o de más de 1,000; 503 sin modelo y la validación de la salida | 49 |
+| `api/test_demanda.py` | `POST /predict/demanda`: lo mismo para P1, incluido el 422 por un campo de P2 y el 500 si el modelo predice viajes infinitos | 37 |
 | `api/test_salud.py` | `GET /health` con los dos modelos, sin ninguno y con solo uno, y que una pregunta siga respondiendo si la otra no cargó | 6 |
 | `api/test_esquemas.py` | Los esquemas de P1 y P2 tienen las variables de la firma del modelo y sus ejemplos son válidos | 4 |
 
@@ -678,7 +680,7 @@ pasaría aunque la semilla no llegara.
 Los tres avisos de `make test` vienen de las dependencias, no del código del proyecto: Starlette
 (el `TestClient` de las pruebas de la API), MLflow (SQLAlchemy) y DeepChecks (`pkg_resources`):
 
-![make test con las 211 pruebas aprobadas](reports/figures/semana8/make_test.png)
+![make test con las 236 pruebas aprobadas](reports/figures/semana8/make_test.png)
 
 ### Resultados de DeepChecks
 

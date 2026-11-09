@@ -82,6 +82,14 @@ class ModeloDemandaFalso:
         return datos["viajes_media_7"].to_numpy() + 1
 
 
+class ModeloDemandaInfinito(ModeloDemandaFalso):
+    """Predice un número infinito de viajes, que un regresor real nunca daría."""
+
+    def predict(self, datos: pd.DataFrame) -> np.ndarray:
+        self.ultimos_datos = datos
+        return np.full(len(datos), np.inf)
+
+
 @pytest.fixture
 def servicio_riesgo() -> dict:
     """Lo mismo que devuelve `cargar_modelo` para P2, pero con el modelo falso."""
@@ -163,4 +171,13 @@ def cliente_salida_invalida(servicio_riesgo, monkeypatch):
         "estimador": clasificador,
     }
     with _iniciar(monkeypatch, {URI_P2: servicio}, raise_server_exceptions=False) as c:
+        yield c
+
+
+@pytest.fixture
+def cliente_demanda_infinita(servicio_demanda, monkeypatch):
+    """Cliente cuyo modelo de P1 predice infinito, con el error como lo daría el servidor."""
+    modelo = ModeloDemandaInfinito()
+    servicio = {**servicio_demanda, "modelo": modelo, "estimador": modelo}
+    with _iniciar(monkeypatch, {URI_P1: servicio}, raise_server_exceptions=False) as c:
         yield c

@@ -9,8 +9,12 @@ al arrancar desde `MODELOS_URI`, que por defecto son los champions del Model Reg
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+import math
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from loguru import logger
 import mlflow
 from mlflow import MlflowClient
@@ -150,6 +154,28 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+
+
+def sin_no_finitos(valor):
+    """Escribe como texto los NaN e infinitos, que JSON no admite, dentro de cualquier estructura."""
+    if isinstance(valor, float) and not math.isfinite(valor):
+        return str(valor)
+    if isinstance(valor, dict):
+        return {clave: sin_no_finitos(v) for clave, v in valor.items()}
+    if isinstance(valor, list | tuple):
+        return [sin_no_finitos(v) for v in valor]
+    return valor
+
+
+@app.exception_handler(RequestValidationError)
+async def entrada_invalida(request: Request, error: RequestValidationError) -> JSONResponse:
+    """Responde 422 como FastAPI, también cuando la entrada trae NaN o infinito.
+
+    El detalle repite el valor rechazado (`input`). Con un NaN, el manejador de FastAPI no puede
+    escribirlo en JSON y la petición termina en 500 en lugar de 422.
+    """
+    detalle = sin_no_finitos(jsonable_encoder(error.errors()))
+    return JSONResponse(status_code=422, content={"detail": detalle})
 
 
 def servicio_cargado(request: Request, nombre: str) -> dict:

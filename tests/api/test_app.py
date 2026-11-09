@@ -106,8 +106,9 @@ class TestCasosLimite:
         assert respuesta.status_code == 422
 
     def test_el_modelo_no_se_llama_si_la_entrada_es_invalida(self, cliente, servicio_riesgo):
-        cliente.post(RUTA, json={"observaciones": [observacion(hora=24)]})
+        respuesta = cliente.post(RUTA, json={"observaciones": [observacion(hora=24)]})
 
+        assert respuesta.status_code == 422
         assert servicio_riesgo["modelo"].ultimos_datos is None
 
 
@@ -130,6 +131,15 @@ class TestConversionDeTipos:
         datos = servicio_riesgo["modelo"].ultimos_datos
         assert datos["hora"].dtype == np.int32
         assert datos["dia_semana"].dtype == np.int32
-        assert datos["capacidad"].dtype == np.int32
-        assert datos["festivo"].dtype == np.bool_
+        assert datos["capacidad"].dtype == np.int64
+        assert datos["festivo"].dtype == np.int64
         assert datos["flujo_neto_lag_1"].dtype == np.float64
+
+
+class TestValidacionDeSalida:
+    def test_probabilidad_fuera_de_rango_no_se_regresa(self, cliente_salida_invalida):
+        """La salida exige probabilidad entre 0 y 1: la API responde con error y no la regresa."""
+        respuesta = cliente_salida_invalida.post(RUTA, json=lote(1))
+
+        assert respuesta.status_code == 500
+        assert "1.5" not in respuesta.text

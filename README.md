@@ -485,15 +485,17 @@ make api                    # opcional: levanta la API localmente con uvicorn si
 
 `make container` toma `MLFLOW_TRACKING_URI` del `.env` y cambia `127.0.0.1` por
 `host.docker.internal`, así que no hace falta escribir la dirección. Sin `MODELO_URI` ni
-`MODELO_URI_P1`, la API carga el `champion` de cada pregunta. El contenedor ocupa la terminal con
-sus logs, que deben decir `Modelo cargado` para los dos modelos, y se detiene con Ctrl+C.
+`MODELO_URI_P1`, la API carga el `champion` de cada pregunta. El puerto se publica solo en
+`127.0.0.1`, así que la API responde en esta computadora y no en la red local. El contenedor ocupa
+la terminal con sus logs, que deben decir `Modelo cargado` para los dos modelos, y se detiene con
+Ctrl+C.
 
 O directamente con los comandos de `docker`:
 
 ```bash
 docker build -t mibici-api .
 
-docker run --rm -p 8000:8000 \
+docker run --rm -p 127.0.0.1:8000:8000 \
   --add-host=host.docker.internal:host-gateway \
   -e MLFLOW_TRACKING_URI=http://host.docker.internal:5001 \
   -e MODELO_URI=models:/mibici-equipo03-p2-riesgo@champion \
@@ -504,7 +506,7 @@ docker run --rm -p 8000:8000 \
 | Parámetro | Para qué sirve |
 |---|---|
 | `--rm` | Elimina el contenedor al detenerlo |
-| `-p 8000:8000` | Publica el puerto `8000` de FastAPI en `http://127.0.0.1:8000` |
+| `-p 127.0.0.1:8000:8000` | Publica el puerto `8000` de FastAPI solo en esta computadora (`http://127.0.0.1:8000`). Sin `127.0.0.1:`, Docker lo abre en todas las interfaces y cualquier equipo de la red local puede llamar a la API. Dentro del contenedor, uvicorn sigue en `0.0.0.0` para recibir lo que Docker le pasa |
 | `--add-host=host.docker.internal:host-gateway` | Mapea `host.docker.internal` a la IP del host (necesario en Linux; Docker Desktop en macOS y Windows lo define automáticamente) |
 | `-e MLFLOW_TRACKING_URI=...` | Dirección del servidor de MLflow vista desde dentro del contenedor (`http://host.docker.internal:5001` en Docker; con Podman usar `http://host.containers.internal:5001`) |
 | `-e MODELO_URI=...` | Modelo y alias (o versión/ruta) de P2 (riesgo) que la API descarga al arrancar |

@@ -150,9 +150,10 @@ image:
 
 
 ## Corre el contenedor de la API con el puerto y las variables de entorno
+# Publica el puerto solo en 127.0.0.1 para que la API no quede abierta a la red local
 .PHONY: container
 container:
-	$(MOTOR) run --rm -p $(PORT):8000 $(EXTRA_CONTENEDOR) \
+	$(MOTOR) run --rm -p 127.0.0.1:$(PORT):8000 $(EXTRA_CONTENEDOR) \
 		-e MLFLOW_TRACKING_URI=$(TRACKING_CONTENEDOR) \
 		$(if $(MODELO_URI),-e MODELO_URI=$(MODELO_URI)) \
 		$(IMAGE_NAME)

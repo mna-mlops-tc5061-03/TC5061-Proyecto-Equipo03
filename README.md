@@ -415,10 +415,30 @@ y `train_grupo_menor_min >= 0.05` en las 10 semillas de `SEMILLAS_ESTABILIDAD`) 
 
 ## Despliegue de la API con Docker
 
+La API sirve con FastAPI (`mi_bici/api/`) los champions de P1 y P2 del Model Registry: carga cada
+modelo por su alias al arrancar, valida la entrada y la salida con Pydantic y responde en JSON.
 La imagen empaca únicamente las dependencias de inferencia (`requirements-api.txt`) y el código de
 `mi_bici/`, corriendo `uvicorn` con un usuario sin privilegios.
 
+| Paso de la entrega | Dónde | PR |
+|---|---|---|
+| Modelo del Model Registry por nombre y alias | `cargar_modelo()` en `mi_bici/api/app.py`, con `MODELOS_URI` de `config.py` | [#111](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/111), [#118](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/118), [#119](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/119) |
+| API REST con un endpoint por pregunta | `mi_bici/api/app.py`: `/health`, `/predict/riesgo` y `/predict/demanda` | [#111](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/111), [#118](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/118) |
+| Validación de entradas y salidas | `mi_bici/api/esquemas.py` | [#112](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/112), [#118](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/118) |
+| `Dockerfile` con todas las dependencias | `Dockerfile`, `.dockerignore` y `requirements-api.txt` | [#114](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/114) |
+| Construir, correr y probar la imagen | `make image`, `make container` y el job `image` del CI | [#115](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/115), [#118](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/118) |
+| Pruebas del servicio con un modelo falso | `tests/api/` | [#117](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/117), [#118](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/118) |
+
+### Requisitos
+
+- Docker (o Podman, ver [Docker o Podman](#docker-o-podman)).
+- El entorno de Python de [Instalación](#instalación), para el servidor de MLflow y para entrenar.
+- Los datos procesados (`make data`) y el repositorio sin cambios sin guardar (`git status`
+  vacío), porque `make registry` solo toma runs con `git_dirty=False`.
+
 ### 1. Levantar el servidor de MLflow accesible desde el contenedor
+
+Desde la raíz del repositorio, con el entorno activado, en una terminal que se queda abierta:
 
 ```bash
 mlflow server \
@@ -437,6 +457,22 @@ mlflow server \
 | `--port 5001` | Puerto del servidor (evita el puerto `5000` que usa AirPlay en macOS) |
 | `--allowed-hosts "..."` | Autoriza los headers `Host` locales y del contenedor (`host.docker.internal`, `host.containers.internal`, `localhost`, `127.0.0.1`) en el filtro de DNS rebinding de MLflow 3 |
 
+Si el Registry está vacío, en otra terminal se entrenan y se registran los modelos, como en la
+[Corrida completa de la entrega](#corrida-completa-de-la-entrega):
+
+```bash
+cp .env.example .env
+make experimentos
+make registry
+```
+
+`make registry` debe dejar un `@champion` en P1 y en P2, que son los modelos que carga la API:
+
+```
+P1: mibici-equipo03-p1-demanda v1 @champion (val_mae = 5.828 contra 7.835 del baseline, +25.6%); predice 3 filas de su ejemplo
+P2: mibici-equipo03-p2-riesgo v1 @champion (val_average_precision = 0.329 contra 0.133 del baseline, +148.1%); predice 3 filas de su ejemplo
+```
+
 ### 2. Construir y correr el contenedor
 
 Con el `Makefile` (por defecto usa Docker; con `MOTOR=podman` usa Podman):
@@ -446,6 +482,11 @@ make image                  # construye la imagen (o make image MOTOR=podman)
 make container              # corre el contenedor (o make container MOTOR=podman)
 make api                    # opcional: levanta la API localmente con uvicorn sin contenedor
 ```
+
+`make container` toma `MLFLOW_TRACKING_URI` del `.env` y cambia `127.0.0.1` por
+`host.docker.internal`, así que no hace falta escribir la dirección. Sin `MODELO_URI` ni
+`MODELO_URI_P1`, la API carga el `champion` de cada pregunta. El contenedor ocupa la terminal con
+sus logs, que deben decir `Modelo cargado` para los dos modelos, y se detiene con Ctrl+C.
 
 O directamente con los comandos de `docker`:
 
@@ -469,13 +510,65 @@ docker run --rm -p 8000:8000 \
 | `-e MODELO_URI=...` | Modelo y alias (o versión/ruta) de P2 (riesgo) que la API descarga al arrancar |
 | `-e MODELO_URI_P1=...` | Igual, para el modelo de P1 (demanda) |
 
+En otra terminal se revisa que el contenedor esté arriba:
+
+```bash
+docker ps --filter ancestor=mibici-api --format "table {{.Image}}\t{{.Status}}\t{{.Ports}}"
+```
+
+El `HEALTHCHECK` del `Dockerfile` llama a `/health` cada 30 segundos: el estado pasa de
+`(health: starting)` a `(healthy)` cuando los dos modelos cargaron, y a `(unhealthy)` si falta
+alguno.
+
+![docker ps con el contenedor mibici-api en estado healthy](reports/figures/semana8/docker_ps.png)
+
+#### Docker o Podman
+
+La actividad sugiere Podman. El equipo usa Docker porque es el que tienen instalado sus
+integrantes, y con él se probó todo lo de esta sección. El `Dockerfile` sigue el estándar OCI, así
+que Podman lo construye y lo corre igual: `make image MOTOR=podman` y `make container MOTOR=podman`,
+o `podman build -t mibici-api .` y `podman run` con los mismos parámetros, pero con
+`-e MLFLOW_TRACKING_URI=http://host.containers.internal:5001` y sin `--add-host`, porque Podman
+define ese nombre por su cuenta.
+
 ### 3. Probar la API
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /health` | Estado del servicio y nombre, versión y alias de cada modelo. Responde 503 si alguno no cargó |
+| `POST /predict/riesgo` | P2: probabilidad de que cada estación se quede sin bicis o sin anclajes en el siguiente bloque de 3 horas, y si llega al umbral del modelo |
+| `POST /predict/demanda` | P1: viajes que se espera que salgan de cada estación en el día |
+| `GET /docs` | Documentación interactiva con los esquemas de entrada y salida y un ejemplo para probar cada ruta |
+
+Cada `POST` recibe una lista `observaciones` de 1 a 1,000 estaciones (las 484 de la red caben en
+una sola petición) y responde una predicción por observación, en el mismo orden, con el nombre y la
+versión del modelo que la hizo.
 
 Verificar el estado del servicio y la versión de cada modelo cargado:
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/health | python3 -m json.tool
 ```
+
+```json
+{
+    "estado": "ok",
+    "modelos": {
+        "demanda": {
+            "modelo": "mibici-equipo03-p1-demanda",
+            "version": "1",
+            "alias": "champion"
+        },
+        "riesgo": {
+            "modelo": "mibici-equipo03-p2-riesgo",
+            "version": "1",
+            "alias": "champion"
+        }
+    }
+}
+```
+
+![Respuesta de /health con los dos modelos cargados](reports/figures/semana8/health.png)
 
 Solicitar predicciones de riesgo (`POST /predict/riesgo`):
 
@@ -509,6 +602,31 @@ curl -s -X POST http://127.0.0.1:8000/predict/riesgo \
     ]
   }' | python3 -m json.tool
 ```
+
+```json
+{
+    "predicciones": [
+        {
+            "riesgo": false,
+            "probabilidad": 0.6436577035267755
+        },
+        {
+            "riesgo": false,
+            "probabilidad": 0.8822514297676317
+        }
+    ],
+    "umbral": 0.8887227086000699,
+    "modelo": "mibici-equipo03-p2-riesgo",
+    "version": "1"
+}
+```
+
+El umbral no es 0.5. Al entrenar se elige el más bajo que deja, en promedio, a lo más 10 alertas
+por bloque en validación (`CAPACIDAD_REBALANCEO`), las estaciones que un camión de rebalanceo
+alcanza a visitar en 3 horas. Por eso la segunda estación, con 0.882, todavía queda en
+`riesgo: false`: el modelo solo alerta las de probabilidad más alta.
+
+![Respuesta de /predict/riesgo desde el contenedor](reports/figures/semana8/curl_riesgo.png)
 
 Solicitar predicciones de demanda (`POST /predict/demanda`):
 
@@ -545,7 +663,109 @@ curl -s -X POST http://127.0.0.1:8000/predict/demanda \
   }' | python3 -m json.tool
 ```
 
+```json
+{
+    "predicciones": [
+        {
+            "viajes": 55.81184431727423
+        },
+        {
+            "viajes": 62.14985447563778
+        },
+        {
+            "viajes": 59.91266413835607
+        }
+    ],
+    "modelo": "mibici-equipo03-p1-demanda",
+    "version": "1"
+}
+```
+
+![Respuesta de /predict/demanda desde el contenedor](reports/figures/semana8/curl_demanda.png)
+
+Con los mismos datos (`data_version` `4ab2182e7493`), las respuestas no cambian de computadora:
+con el Registry de la corrida oficial y con uno nuevo, hecho con `make experimentos` y
+`make registry` en otra máquina, `/predict/demanda` dio los mismos 55.8, 62.1 y 59.9 viajes, y la
+primera estación de `/predict/riesgo`, la misma probabilidad de 0.644.
+
 La documentación interactiva queda disponible en http://127.0.0.1:8000/docs.
+
+### Errores
+
+| Código | Cuándo | Qué hacer |
+|---|---|---|
+| 422 | La entrada no cumple el esquema: falta un campo o sobra uno, un valor está fuera de rango (por ejemplo `dia_semana` fuera de 0 a 6, `hora` fuera de 0 a 23 o `capacidad` en 0), la lista está vacía o trae más de 1,000 observaciones | Corregir lo que indica `detail`, que dice el campo (`loc`) y la regla que no se cumplió (`msg`) |
+| 503 | El modelo de esa pregunta no cargó al arrancar: el servidor de MLflow está apagado, la `MLFLOW_TRACKING_URI` no es la correcta o el Registry no tiene ese alias | Revisar los logs del contenedor (`No se pudo cargar ...`), corregir y reiniciar el contenedor. La otra pregunta sigue respondiendo; `/health` da 503 mientras falte alguno |
+
+Por ejemplo, con `dia_semana` en 7:
+
+```bash
+curl -s -i -X POST http://127.0.0.1:8000/predict/demanda -H "Content-Type: application/json" -d '{"observaciones":[{"viajes_lag_1":56.0,"viajes_lag_7":54.0,"viajes_media_7":50.7,"dia_semana":7,"festivo":false,"capacidad":15}]}'
+```
+
+```
+HTTP/1.1 422 Unprocessable Content
+...
+{"detail":[{"type":"less_than_equal","loc":["body","observaciones",0,"dia_semana"],"msg":"Input should be less than or equal to 6","input":7,"ctx":{"le":6}}]}
+```
+
+![Respuesta 422 por un dia_semana fuera de rango](reports/figures/semana8/curl_422.png)
+
+La salida también se valida: `probabilidad` y `umbral` deben estar entre 0 y 1. Si el modelo
+produjera un valor fuera de ese rango, la API responde con un error en lugar de regresarlo.
+
+### Opción elegida para el modelo: el Registry al arrancar
+
+De las dos opciones de la actividad, la API **carga el modelo del Model Registry al arrancar**, con
+`MLFLOW_TRACKING_URI` apuntando al servidor de MLflow. `MODELO_URI` (P2) y `MODELO_URI_P1` (P1)
+indican el modelo por nombre y alias; por defecto, `models:/mibici-equipo03-p2-riesgo@champion` y
+`models:/mibici-equipo03-p1-demanda@champion`. `cargar_modelo()` resuelve el alias a una versión,
+carga esa versión y la reporta en `/health` y en cada respuesta.
+
+Por qué:
+
+- **La misma imagen sirve cualquier versión.** Promover un modelo nuevo es mover el alias
+  `champion` con `make registry` y reiniciar el contenedor, sin reconstruir la imagen (ver
+  [¿Por qué aliases y no etapas?](#model-registry)).
+- **Cada predicción es rastreable.** La respuesta dice el modelo y la versión, y la versión guarda
+  en el Registry su run de origen, el commit y la versión de los datos.
+- **La imagen es más ligera.** No trae datos ni modelos: usa `mlflow-skinny` y solo las
+  dependencias de inferencia.
+
+El costo es que el contenedor necesita al servidor de MLflow al arrancar; si no lo alcanza, la
+pregunta afectada responde 503. Y el modelo queda fijo hasta reiniciar: mover el alias no cambia el
+que ya está cargado.
+
+**La alternativa: empaquetar el modelo en la imagen.** `MODELO_URI` también acepta la ruta de una
+carpeta con un modelo de MLflow, así que se puede descargar del Registry, copiarlo en la imagen y
+apuntar `MODELO_URI` a esa carpeta (o construir la imagen con `mlflow models build-docker`). El
+contenedor ya no depende del servidor, pero cada versión nueva obliga a reconstruir la imagen. El
+job `image` del CI usa esta vía: monta modelos de prueba como carpetas para probar la imagen sin un
+servidor de MLflow.
+
+### Estrategia de despliegue: inferencia en tiempo real
+
+Huyen (2022, cap. 7) distingue la **predicción por lotes**, que se calcula cada cierto tiempo y se
+guarda para consultarla después, de la **predicción en línea**, que se calcula en el momento en que
+se pide. La API es inferencia en tiempo real: cada petición responde con el modelo cargado en
+memoria.
+
+**P2 necesita tiempo real.** El rebalanceo se decide al empezar cada bloque de 3 horas, y varias
+de sus variables son el flujo de los bloques que acaban de terminar (`flujo_neto_lag_1`,
+`salidas_lag_1`, `llegadas_lag_1`). Esos datos no existen hasta que cierra el bloque, así que la
+predicción no se puede calcular con anticipación: al cerrar cada bloque se manda una sola petición
+con las 484 estaciones y se eligen las que hay que visitar. Un lote nocturno predeciría con datos
+de un día antes.
+
+**P1 podría ir por lotes.** La demanda del día se calcula con lo que ya se sabe al empezar el día
+(viajes de ayer, del mismo día de la semana anterior y la media de 7 días). Un proceso cada
+madrugada podría predecir las 484 estaciones de una vez y guardar el resultado, por ejemplo con
+`mlflow models predict` sobre un CSV. Se sirve en la misma API para tener un solo servicio, con el
+mismo mecanismo de carga y la misma validación, pero si solo se consultara una vez al día, el lote
+sería la opción más simple.
+
+**Referencia:** Huyen, C. (2022). *Designing machine learning systems: An iterative process for
+production-ready applications*. O'Reilly Media.
 
 ## Buenas prácticas aplicadas
 
@@ -574,7 +794,11 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── dataset.py           # ingesta: descarga, limpieza, Parquet y manifiesto
 │   ├── features.py          # variables de P1, P2 y P3, sin información del futuro
 │   ├── plots.py             # gráficas que se registran como artefactos
+│   ├── seguimiento.py       # conexión con el servidor de tracking de MLflow
 │   ├── validacion.py        # validación de los datos con DeepChecks
+│   ├── api/
+│   │   ├── app.py           # API de FastAPI: /health, /predict/riesgo y /predict/demanda
+│   │   └── esquemas.py      # esquemas de Pydantic de entrada y salida, con ejemplos
 │   └── modeling/
 │       ├── base.py          # ExperimentoBase: registro común de cada run en MLflow
 │       ├── evaluate.py      # métricas por tipo de tarea (val_*, test_*, train_*)
@@ -588,14 +812,17 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── models/                  # modelos serializados. No se versionan
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb
 ├── references/              # ML Canvas, diagramas y referencias
-├── reports/                 # reporte de la propuesta y figures/
+├── reports/                 # reporte de la propuesta y figures/ (capturas por semana)
 ├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make test, make test-fast, make lint, make security
+├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make test, make test-fast, make lint, make security, make api, make image, make container
+├── Dockerfile               # imagen de la API: dependencias de inferencia, código y usuario sin privilegios
+├── .dockerignore            # deja fuera de la imagen los datos, MLflow, .env, pruebas y documentación
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking
 ├── requirements.txt         # dependencias con versiones fijas
+├── requirements-api.txt     # dependencias de la API, también con versiones fijas
 └── pyproject.toml           # metadatos del paquete y configuración de ruff y bandit
 ```
 

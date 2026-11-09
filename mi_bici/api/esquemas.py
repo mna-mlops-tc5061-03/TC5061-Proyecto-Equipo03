@@ -82,7 +82,10 @@ EJEMPLO_P2 = [
 class ObservacionDemanda(BaseModel):
     """Historia reciente de una estación al empezar el día que se predice."""
 
-    model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [EJEMPLO_P1[0]]})
+    # NaN e infinito no son conteos de viajes: el JSON los admite, pero se rechazan con 422
+    model_config = ConfigDict(
+        extra="forbid", allow_inf_nan=False, json_schema_extra={"examples": [EJEMPLO_P1[0]]}
+    )
 
     viajes_lag_1: float = Field(ge=0, description="Viajes que salieron de la estación ayer")
     viajes_lag_7: float = Field(
@@ -113,6 +116,8 @@ class SolicitudDemanda(BaseModel):
 class PrediccionDemanda(BaseModel):
     """Predicción de una observación: viajes esperados en el día."""
 
+    model_config = ConfigDict(allow_inf_nan=False)
+
     viajes: float = Field(description="Viajes que se espera que salgan de la estación en el día")
 
 
@@ -130,7 +135,9 @@ class RespuestaDemanda(BaseModel):
 class ObservacionRiesgo(BaseModel):
     """Estado reciente de una estación al empezar un bloque de horas."""
 
-    model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [EJEMPLO_P2[0]]})
+    model_config = ConfigDict(
+        extra="forbid", allow_inf_nan=False, json_schema_extra={"examples": [EJEMPLO_P2[0]]}
+    )
 
     flujo_neto_lag_1: float = Field(
         description="Llegadas menos salidas en el bloque anterior. Puede ser negativo"

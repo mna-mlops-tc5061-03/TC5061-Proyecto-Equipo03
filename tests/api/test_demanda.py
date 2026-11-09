@@ -1,6 +1,7 @@
 """Pruebas de POST /predict/demanda (P1) con un modelo falso (ver conftest.py)."""
 
 import copy
+import json
 
 import numpy as np
 import pytest
@@ -100,6 +101,22 @@ class TestCasosLimite:
     def test_lote_demasiado_grande_da_422(self, cliente):
         assert cliente.post(RUTA, json=lote(MAX_OBSERVACIONES + 1)).status_code == 422
 
+    @pytest.mark.parametrize("valor", ["NaN", "Infinity", "-Infinity"])
+    @pytest.mark.parametrize("campo", ["viajes_lag_1", "viajes_lag_7", "viajes_media_7"])
+    def test_numeros_no_finitos_dan_422(self, cliente, campo, valor):
+        """JSON admite NaN e Infinity, pero no son valores válidos de ninguna variable."""
+        cuerpo = json.dumps({"observaciones": [observacion(**{campo: 0.0})]})
+        cuerpo = cuerpo.replace(f'"{campo}": 0.0', f'"{campo}": {valor}')
+
+        respuesta = cliente.post(
+            RUTA, content=cuerpo, headers={"Content-Type": "application/json"}
+        )
+
+        assert respuesta.status_code == 422
+        error = respuesta.json()["detail"][0]
+        assert error["loc"] == ["body", "observaciones", 0, campo]
+        assert error["type"] == "finite_number"
+
     def test_el_modelo_no_se_llama_si_la_entrada_es_invalida(self, cliente, servicio_demanda):
         respuesta = cliente.post(RUTA, json={"observaciones": [observacion(dia_semana=7)]})
 
@@ -126,3 +143,12 @@ class TestConversionDeTipos:
         assert datos["capacidad"].dtype == np.int64
         assert datos["festivo"].dtype == np.int64
         assert datos["viajes_media_7"].dtype == np.float64
+
+
+class TestValidacionDeSalida:
+    def test_viajes_infinitos_no_se_regresan(self, cliente_demanda_infinita):
+        """La salida exige un número finito de viajes: la API responde con error y no lo regresa."""
+        respuesta = cliente_demanda_infinita.post(RUTA, json=lote(1))
+
+        assert respuesta.status_code == 500
+        assert "inf" not in respuesta.text.lower()

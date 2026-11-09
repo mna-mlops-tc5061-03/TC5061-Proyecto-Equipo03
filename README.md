@@ -663,8 +663,8 @@ MiBici y todas corren en el CI.
 | `modeling/test_search.py` | Búsqueda con nested runs y `params=mejor` | 4 |
 | `modeling/test_mlproject.py` | Entradas del `MLproject` con sus valores por defecto | 3 |
 | `modeling/test_reproducibilidad.py` | Mismas predicciones y métricas con la misma semilla | 7 |
-| `api/test_app.py` | `POST /predict/riesgo` con un modelo falso: respuesta, orden del lote, tipos de la firma, 422 por cada campo faltante o fuera de rango, 503 sin modelo y la validación de la salida | 34 |
-| `api/test_demanda.py` | `POST /predict/demanda`: lo mismo para P1, y que un campo de P2 dé 422 | 27 |
+| `api/test_app.py` | `POST /predict/riesgo` con un modelo falso: respuesta, orden del lote y tipos de la firma; 422 por cada campo faltante, fuera de rango o extra, y por un lote vacío o de más de 1,000; 503 sin modelo y la validación de la salida | 34 |
+| `api/test_demanda.py` | `POST /predict/demanda`: lo mismo para P1, incluido el 422 por un campo de P2 | 27 |
 | `api/test_salud.py` | `GET /health` con los dos modelos, sin ninguno y con solo uno, y que una pregunta siga respondiendo si la otra no cargó | 6 |
 | `api/test_esquemas.py` | Los esquemas de P1 y P2 tienen las variables de la firma del modelo y sus ejemplos son válidos | 4 |
 

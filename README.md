@@ -764,6 +764,9 @@ madrugada podría predecir las 484 estaciones de una vez y guardar el resultado,
 mismo mecanismo de carga y la misma validación, pero si solo se consultara una vez al día, el lote
 sería la opción más simple.
 
+**Referencia:** Huyen, C. (2022). *Designing machine learning systems: An iterative process for
+production-ready applications*. O'Reilly Media.
+
 ## Buenas prácticas aplicadas
 
 | Práctica | Cómo se aplica |

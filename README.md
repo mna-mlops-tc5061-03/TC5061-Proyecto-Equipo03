@@ -165,7 +165,7 @@ Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno ne
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 140 pruebas de tests/
+make test            # las 211 pruebas de tests/
 make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt
@@ -192,6 +192,10 @@ ingesta y con casos límite a propósito (una estación con pocos días de histo
 0 y viajes que cruzan el corte de prueba), así que ninguna prueba usa datos de MiBici y todas corren
 en el CI.
 
+Lo de `mi_bici/api/` se prueba en `tests/api/`, cuyo `conftest.py` sustituye `cargar_modelo` por un
+modelo falso con la misma forma que el real: las pruebas de la API tampoco necesitan el servidor de
+MLflow.
+
 | Archivo | Qué prueba | Pruebas |
 |---|---|---|
 | `test_dataset_cleaning.py` | Limpieza de la ingesta: quita `viaje_id` repetidos, viajes de menos de 2 minutos que regresan a la misma estación, duraciones negativas y viajes de más de 12 horas | 4 |
@@ -207,6 +211,10 @@ en el CI.
 | `modeling/test_search.py` | Búsqueda con nested runs y `params=mejor` | 4 |
 | `modeling/test_mlproject.py` | Entradas del `MLproject` con sus valores por defecto | 3 |
 | `modeling/test_reproducibilidad.py` | Mismas predicciones y métricas con la misma semilla | 7 |
+| `api/test_app.py` | `/predict/riesgo`: una observación y un lote en orden. Límite: `hora` 0 y 23 y un lote de 1,000; 422 por valor fuera de rango, campo faltante o extra y lote vacío o demasiado grande, sin llamar al modelo; 503 sin modelo; tipos de la firma, y que una probabilidad fuera de 0 a 1 no se regrese | 34 |
+| `api/test_demanda.py` | `/predict/demanda`: lo mismo para P1, con las filas del `serving_input_example` del champion. Límite: `dia_semana` 0 y 6 y viajes en 0 | 27 |
+| `api/test_salud.py` | `/health` con el nombre y la versión de cada modelo, 503 si falta alguno, y que una pregunta siga respondiendo si la otra no cargó | 6 |
+| `api/test_esquemas.py` | Los campos de cada esquema son la firma del modelo, en su orden, y el ejemplo de `/docs` pasa la validación | 4 |
 
 **Reproducibilidad.** `test_reproducibilidad.py` entrena dos veces con `SEMILLA` un candidato de
 cada pregunta (`hgb` de P1, `rf` de P2, y `kmeans` y `gmm` de P3) y compara las predicciones y las
@@ -215,10 +223,10 @@ métricas. En P2 compara la probabilidad, no solo la etiqueta. Como caso límite
 12,000 filas, porque con menos de 10,000 `HistGradientBoosting` no usa la semilla y la prueba
 pasaría aunque la semilla no llegara.
 
-Los dos avisos de `make test` vienen de MLflow (SQLAlchemy) y de DeepChecks (`pkg_resources`), no
-del código del proyecto:
+Los tres avisos de `make test` vienen de MLflow (SQLAlchemy), de DeepChecks (`pkg_resources`) y del
+`TestClient` de FastAPI (`httpx`), no del código del proyecto:
 
-![make test con las 140 pruebas aprobadas](reports/figures/semana7/make_test.png)
+![make test con las 211 pruebas aprobadas](reports/figures/semana8/make_test.png)
 
 ### Resultados de DeepChecks
 
@@ -322,6 +330,9 @@ bandit antes del #89, con sus 5 hallazgos y el resumen:
 
 Cada PR a `main` corre `make lint`, `make test` y `make security` en GitHub Actions
 (`.github/workflows/ci.yml`), con un job por comando para ver por separado cuál falla.
+Un cuarto job, `image`, construye la imagen con `make image`, la levanta con modelos de prueba y
+llama a `/health` y a cada `/predict`; los detalles están en
+[Despliegue de la API con Docker](#despliegue-de-la-api-con-docker).
 `make validar-datos` no corre ahí porque necesita los datos de MiBici, que no se versionan, pero
 `tests/test_validacion.py` sí, con datos sintéticos.
 

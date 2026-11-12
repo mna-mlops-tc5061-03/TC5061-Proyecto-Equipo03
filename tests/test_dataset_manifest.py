@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 
 from mi_bici import dataset
@@ -83,7 +85,7 @@ class TestManifest:
     def test_coordenadas_con_redondeo_exacto(self, tmp_path, monkeypatch):
         """Verifica que las coordenadas de estaciones se leen igual que float(), en cualquier computadora."""
         textos = ["20.691846603895982", "-103.36805841104507"]
-        (tmp_path / "nomenclatura_2026_09.csv").write_text(
+        (tmp_path / Path(dataset.URL_STATIONS).name).write_text(
             f'"id","name","latitude","longitude","dpcapacity"\n"2","A","{textos[0]}","{textos[1]}","15"\n',
             encoding="utf-8",
         )

@@ -2,8 +2,8 @@
   "version": "2.0",
   "estaciones": {
     "file": "estaciones.parquet",
-    "content_hash": "1ebd64195e05fc95b4a7c6f031afb19b0269033877fa5cd7c0378d8d7320d47c",
-    "num_rows": 484,
+    "content_hash": "61e4f6a380c81eb2ef6b4dfffce944cf62d8a94416d8053fc50e8effe4f80cda",
+    "num_rows": 470,
     "columns": [
       "estacion_id",
       "nombre",

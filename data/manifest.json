@@ -14,9 +14,9 @@
   },
   "viajes": {
     "directory": "viajes",
-    "content_hash": "aeb7e687dcd4d1ec04ae44a84b1ff3e4c559ea933964d9d65ac387825c1907b1",
-    "total_files": 12,
-    "total_rows": 4332379,
+    "content_hash": "420ce4de31fe4dcb5dff2d138d1cfdf73830f4d0a8ac73d3440262e477258835",
+    "total_files": 13,
+    "total_rows": 4937486,
     "columns": [
       "genero",
       "inicio",
@@ -86,6 +86,11 @@
         "partition": "anio=2026/mes=09",
         "content_hash": "45a3c5baead41642654068e07411f9c4ea55d8e85a751daaa2ef0ff42a1f4a3d",
         "num_rows": 468522
+      },
+      {
+        "partition": "anio=2026/mes=10",
+        "content_hash": "eef47df6eea6faa4a6781a631f7f2ee5678f67b59561c7f104cb47bcce054fb2",
+        "num_rows": 605107
       }
     ]
   }

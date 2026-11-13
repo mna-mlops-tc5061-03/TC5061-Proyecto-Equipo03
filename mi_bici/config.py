@@ -83,6 +83,7 @@ URLS_VIAJES = {
     "2026-07": f"{URL_BASE}/129006/datos_abiertos_2026_07.csv",
     "2026-08": f"{URL_BASE}/130362/datos_abiertos_2026_08.csv",
     "2026-09": f"{URL_BASE}/131825/datos_abiertos_2026_09.csv",
+    "2026-10": f"{URL_BASE}/133188/datos_abiertos_2026_10.csv",
 }
 # MiBici solo publica la nomenclatura vigente: al salir una nueva, la anterior deja de existir
 URL_STATIONS = f"{URL_BASE}/1118/nomenclatura_2026_10.csv"
@@ -96,6 +97,15 @@ CORTE_PRUEBA = "2026-08-01"
 # Validación: los dos meses antes de la prueba. Los modelos se comparan y eligen con ella, y la
 # prueba solo confirma el resultado
 CORTE_VALIDACION = "2026-06-01"
+
+# Monitoreo (entrega 5). La ingesta trae meses después de FECHA_FIN, pero los experimentos leen
+# hasta FECHA_FIN, así que sus conjuntos no cambian. La referencia es lo que vio el champion de P1
+# al entrenar, y el periodo actual es lo posterior, que hace de producción
+PERIODO_REFERENCIA = (FECHA_INICIO, "2026-07-31")
+PERIODO_ACTUAL = ("2026-08-01", "2026-10-31")
+# El reentrenamiento usa lo anterior a este corte y el A/B se evalúa desde él, con un mes que
+# ninguna de las dos versiones vio
+CORTE_AB = "2026-10-01"
 
 # Métrica con que se elige el modelo de cada pregunta y si mayor es mejor. Un candidato se acepta
 # si le gana al baseline en esta métrica en validación y también en prueba. P3 no tiene prueba y

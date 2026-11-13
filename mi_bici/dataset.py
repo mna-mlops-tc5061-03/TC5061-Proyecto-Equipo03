@@ -21,6 +21,7 @@ from mi_bici.config import (
     DURACION_MINIMA_MIN,
     ESTACIONES_FILE,
     ESTACIONES_METADATA_FILE,
+    FECHA_FIN,
     GENERO_NULL_VALUE,
     MANIFEST_FILE,
     PROCESSED_DATA_DIR,
@@ -239,15 +240,32 @@ def load_data_from_url(
         return pd.read_csv(dest_file, encoding="utf-8")
 
 
-def load_processed_travels(columns: list[str] | None = None) -> pd.DataFrame:
-    """Carga el dataset completo de viajes procesados en formato parquet."""
+def load_processed_travels(
+    columns: list[str] | None = None, hasta: str | None = FECHA_FIN
+) -> pd.DataFrame:
+    """Carga los viajes procesados en formato parquet hasta una fecha.
+
+    Args:
+        columns: Columnas que se leen. Con `None` se leen todas.
+        hasta: Último día que se incluye, en formato `YYYY-MM-DD`. Por defecto es `FECHA_FIN`, así
+            que los meses que la ingesta agrega para el monitoreo no cambian los conjuntos de los
+            experimentos. Con `None` se leen todos los viajes.
+
+    Returns:
+        Los viajes que empiezan a más tardar el día `hasta`.
+    """
     if not VIAJES_DIR.exists():
         raise FileNotFoundError(f"No se encontró el directorio de viajes procesados: {VIAJES_DIR}")
     # Limpiar metadata.json residual dentro del directorio particionado si existiera
     legacy_meta = VIAJES_DIR / "metadata.json"
     if legacy_meta.exists():
         legacy_meta.unlink()
-    return pd.read_parquet(VIAJES_DIR, columns=columns)
+    if hasta is None:
+        return pd.read_parquet(VIAJES_DIR, columns=columns)
+    # `inicio` es texto ISO (YYYY-MM-DD HH:MM), así que compararlo con el día siguiente deja fuera
+    # todo lo posterior a `hasta` sin convertir fechas
+    dia_siguiente = (pd.Timestamp(hasta) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    return pd.read_parquet(VIAJES_DIR, columns=columns, filters=[("inicio", "<", dia_siguiente)])
 
 
 def load_processed_stations() -> pd.DataFrame:

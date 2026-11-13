@@ -35,7 +35,7 @@ Se usan los datos abiertos de [MiBici](https://mibici.net/es/datos-abiertos/), e
 - **Viajes** (`datos_abiertos_AAAA_MM.csv`): un archivo por mes, con identificador del viaje y del usuario, género, año de nacimiento, fecha y hora de inicio y fin, y estaciones de origen y destino.
 - **Estaciones** (`nomenclatura_AAAA_MM.csv`): catálogo con identificador, nombre, ubicación y capacidad de cada estación.
 
-Se usan 12 meses, de octubre de 2025 a septiembre de 2026: 4,332,379 viajes después de la limpieza y 484 estaciones. El periodo y el corte de prueba se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias, ya sin los identificadores del viaje y del usuario, en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de los datos procesados como versión de los datos.
+La ingesta descarga 13 meses, de octubre de 2025 a octubre de 2026: 4,937,486 viajes después de la limpieza y 470 estaciones. Los experimentos usan los 12 primeros, hasta septiembre de 2026 (4,332,379 viajes), porque `load_processed_travels` lee hasta `FECHA_FIN`. Octubre de 2026 solo se usa en el monitoreo y en el A/B. El periodo, el corte de prueba y los periodos de monitoreo se definen en `mi_bici/config.py`. Los archivos descargados se guardan sin modificar en `data/raw/`, y las versiones limpias, ya sin los identificadores del viaje y del usuario, en Parquet en `data/processed/`. Ninguno se versiona: se reconstruyen con la ingesta, y `data/manifest.json` registra el número de filas y el hash de los datos procesados como versión de los datos.
 
 ## Instalación
 

@@ -285,13 +285,14 @@ def registrar(pregunta: str, runs: pd.DataFrame, cliente: MlflowClient) -> dict:
     }
 
 
-def comprobar_carga(nombre: str) -> int:
-    """Carga el champion por su nombre y alias y predice sobre su ejemplo de entrada.
+def comprobar_carga(nombre: str, alias: str = ALIAS_PRODUCCION) -> int:
+    """Carga una versión por su nombre y alias y predice sobre su ejemplo de entrada.
 
     Es la misma carga que usarán las siguientes etapas del proyecto.
 
     Args:
         nombre: Nombre del modelo registrado.
+        alias: Alias de la versión. Por defecto, el champion.
 
     Returns:
         El número de predicciones.
@@ -299,13 +300,13 @@ def comprobar_carga(nombre: str) -> int:
     Raises:
         RuntimeError: Si el modelo no trae ejemplo de entrada o no da una predicción por fila.
     """
-    modelo = mlflow.pyfunc.load_model(f"models:/{nombre}@{ALIAS_PRODUCCION}")
+    modelo = mlflow.pyfunc.load_model(f"models:/{nombre}@{alias}")
     ejemplo = modelo.input_example
     if ejemplo is None:
-        raise RuntimeError(f"{nombre}@{ALIAS_PRODUCCION} no tiene ejemplo de entrada")
+        raise RuntimeError(f"{nombre}@{alias} no tiene ejemplo de entrada")
     prediccion = modelo.predict(ejemplo)
     if len(prediccion) != len(ejemplo):
-        raise RuntimeError(f"{nombre}@{ALIAS_PRODUCCION} no da una predicción por fila")
+        raise RuntimeError(f"{nombre}@{alias} no da una predicción por fila")
     return len(prediccion)
 
 

@@ -130,6 +130,12 @@ registry:
 	$(PYTHON_INTERPRETER) -m mi_bici.modeling.registry
 
 
+## Reentrena el champion de P1 con datos hasta CORTE_AB y lo registra como challenger
+.PHONY: reentrenar
+reentrenar:
+	$(PYTHON_INTERPRETER) -m mi_bici.modeling.reentrenar
+
+
 ## Valida los datos procesados con DeepChecks: integridad y drift entre entrenamiento y prueba
 .PHONY: validar-datos
 validar-datos:

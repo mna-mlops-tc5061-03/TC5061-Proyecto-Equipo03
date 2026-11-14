@@ -132,3 +132,45 @@ def perfil_horario(perfil: pd.DataFrame, columna: str, ruta: Path) -> Path:
     )
     ax.legend(title="grupo", fontsize=8)
     return _guardar(fig, ruta)
+
+
+def drift_y_error_por_mes(por_mes: pd.DataFrame, umbral: float, ruta: Path) -> Path:
+    """Grafica la evolución mensual del `drift_share` y del MAE del champion contra el baseline (P1).
+
+    Args:
+        por_mes: Tabla mensual con `mes`, `drift_share`, `mae_champion` y `mae_baseline`.
+        umbral: Umbral de `drift_share` propuesto como disparador de reentrenamiento.
+        ruta: Ruta del archivo PNG.
+
+    Returns:
+        La ruta de la gráfica.
+    """
+    fig, (ax_drift, ax_mae) = plt.subplots(1, 2, figsize=(10, 4))
+    meses = por_mes["mes"].astype(str)
+
+    ax_drift.plot(meses, por_mes["drift_share"], marker="o", color="#1f77b4", label="drift_share")
+    ax_drift.axhline(umbral, color="#d62728", linestyle="--", label=f"umbral ({umbral:.2f})")
+    ax_drift.set(
+        xlabel="mes",
+        ylabel="proporción de columnas con drift",
+        ylim=(-0.05, 1.05),
+        title="Drift contra la referencia por mes",
+    )
+    ax_drift.legend()
+
+    ax_mae.plot(meses, por_mes["mae_champion"], marker="o", color="#1f77b4", label="champion")
+    ax_mae.plot(
+        meses,
+        por_mes["mae_baseline"],
+        marker="s",
+        color="#ff7f0e",
+        linestyle="--",
+        label="baseline",
+    )
+    ax_mae.set(
+        xlabel="mes",
+        ylabel="MAE (viajes por estación y día)",
+        title="Error de predicción por mes (P1)",
+    )
+    ax_mae.legend()
+    return _guardar(fig, ruta)

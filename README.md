@@ -543,7 +543,7 @@ La documentación interactiva queda disponible en http://127.0.0.1:8000/docs.
 
 | Código | Cuándo | Qué hacer |
 |---|---|---|
-| 422 | La entrada no cumple el esquema: falta un campo o sobra uno, un valor está fuera de rango (por ejemplo `dia_semana` fuera de 0 a 6, `hora` fuera de 0 a 23 o `capacidad` en 0), un número no es finito (`NaN` o `Infinity`), la lista está vacía o trae más de 1,000 observaciones | Corregir lo que indica `detail`, que dice el campo (`loc`) y la regla que no se cumplió (`msg`) |
+| 422 | La entrada no cumple el esquema: falta un campo o sobra uno, un valor está fuera de rango (por ejemplo `dia_semana` fuera de 0 a 6, una `hora` que no empieza un bloque de 3 horas (0, 3, …, 21), `capacidad` en 0 o mayor que 100, o `riesgo_semana_anterior` distinto de 0 o 1), un número no es finito (`NaN` o `Infinity`), la lista está vacía o trae más de 1,000 observaciones | Corregir lo que indica `detail`, que dice el campo (`loc`) y la regla que no se cumplió (`msg`) |
 | 503 | El modelo de esa pregunta no cargó al arrancar: el servidor de MLflow está apagado, la `MLFLOW_TRACKING_URI` no es la correcta o el Registry no tiene ese alias | Revisar los logs del contenedor (`No se pudo cargar ...`), corregir y reiniciar el contenedor. La otra pregunta sigue respondiendo; `/health` da 503 mientras falte alguno. Si el servidor está apagado, la API arranca en unos 10 segundos y responde 503, porque el `Dockerfile` limita los reintentos de MLflow (`MLFLOW_HTTP_REQUEST_MAX_RETRIES=2` y `MLFLOW_HTTP_REQUEST_TIMEOUT=10`). Si la dirección no contesta (por ejemplo, una IP equivocada), cada intento espera los 10 s del timeout y tarda más de un minuto |
 
 Por ejemplo, con `dia_semana` en 7:
@@ -626,7 +626,7 @@ de MLflow ni el `.env`:
 make test            # las 236 pruebas de tests/
 make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
-make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt
+make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt y requirements-api.txt
 make lint            # formato y estilo con ruff, también de tests/
 ```
 
@@ -665,8 +665,8 @@ MiBici y todas corren en el CI.
 | `modeling/test_search.py` | Búsqueda con nested runs y `params=mejor` | 4 |
 | `modeling/test_mlproject.py` | Entradas del `MLproject` con sus valores por defecto | 3 |
 | `modeling/test_reproducibilidad.py` | Mismas predicciones y métricas con la misma semilla | 7 |
-| `api/test_app.py` | `POST /predict/riesgo` con un modelo falso: respuesta, orden del lote y tipos de la firma; 422 por cada campo faltante, fuera de rango, no finito (`NaN` o `Infinity`) o extra, y por un lote vacío o de más de 1,000; 503 sin modelo y la validación de la salida | 49 |
-| `api/test_demanda.py` | `POST /predict/demanda`: lo mismo para P1, incluido el 422 por un campo de P2 y el 500 si el modelo predice viajes infinitos | 37 |
+| `api/test_app.py` | `POST /predict/riesgo` con un modelo falso: respuesta, orden del lote y tipos de la firma; 422 por cada campo faltante, fuera de rango (incluidos el tope de `capacidad`, una `hora` que no empieza un bloque y `riesgo_semana_anterior` distinto de 0 o 1), no finito (`NaN` o `Infinity`, en cualquier campo) o extra, y por un lote vacío o de más de 1,000; 503 sin modelo y la validación de la salida | 70 |
+| `api/test_demanda.py` | `POST /predict/demanda`: lo mismo para P1, incluido el 422 por un campo de P2 y el 500 si el modelo predice viajes infinitos | 50 |
 | `api/test_salud.py` | `GET /health` con los dos modelos, sin ninguno y con solo uno, y que una pregunta siga respondiendo si la otra no cargó | 6 |
 | `api/test_esquemas.py` | Los esquemas de P1 y P2 tienen las variables de la firma del modelo y sus ejemplos son válidos | 4 |
 
@@ -765,6 +765,10 @@ vulnerabilidades que no aplican, y el motivo queda en el `Makefile`. pip-audit r
 «3 ignored» porque su base de datos trae PYSEC-2026-3447 dos veces. `mi-bici` aparece como no
 auditado porque es el paquete de este repositorio (`-e .`), que no está en PyPI; su código lo
 revisa bandit.
+
+Desde la entrega 5, `make security` también revisa `requirements-api.txt`, las dependencias de
+la imagen de la API, que tienen sus propias versiones. Ahí no hay vulnerabilidades conocidas, así
+que no se ignora ninguna.
 
 bandit antes del #89, con sus 5 hallazgos y el resumen:
 

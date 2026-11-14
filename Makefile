@@ -136,6 +136,12 @@ reentrenar:
 	$(PYTHON_INTERPRETER) -m mi_bici.modeling.reentrenar
 
 
+## A/B offline de P1 entre champion y challenger. Con ARGS=--promover aplica la decisión
+.PHONY: ab-test
+ab-test:
+	$(PYTHON_INTERPRETER) -m mi_bici.ab_testing $(ARGS)
+
+
 ## Valida los datos procesados con DeepChecks: integridad y drift entre entrenamiento y prueba
 .PHONY: validar-datos
 validar-datos:

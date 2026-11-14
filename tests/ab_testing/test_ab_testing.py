@@ -1,3 +1,5 @@
+"""Pruebas del A/B de P1 con datos sintéticos, modelos falsos y un MLflow temporal."""
+
 from types import SimpleNamespace
 
 import mlflow
@@ -8,6 +10,7 @@ import mlflow.pyfunc
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.stats import wilcoxon
 
 from mi_bici import ab_testing
 from mi_bici.config import (
@@ -152,6 +155,25 @@ class TestComparar:
 
         assert resultado["delta_mae_habiles"] == pytest.approx(1.0)
         assert resultado["delta_mae_fin_de_semana"] == pytest.approx(4.0)
+
+    def test_p_valor_por_estacion_y_no_por_fila(self):
+        """Si la diferencia depende de la estación, los días repetidos no cuentan como evidencia.
+
+        Con 30 estaciones y una diferencia media cercana a 0, el Wilcoxon por fila trata los 31 días
+        de cada estación como pares independientes y da p < 0.05; el de `comparar`, por estación, no.
+        """
+        datos = demanda()
+        por_estacion = np.random.default_rng(2).normal(0.2, 1, ESTACIONES)
+        diferencia = por_estacion[datos["estacion_id"]]
+        y = datos["viajes"].to_numpy()
+        pred_a = y + 5 + np.maximum(diferencia, 0)
+        pred_b = y + 5 + np.maximum(-diferencia, 0)
+
+        resultado = ab_testing.comparar(datos, pred_a, pred_b)
+
+        assert wilcoxon(np.abs(y - pred_a), np.abs(y - pred_b)).pvalue < 0.05
+        assert resultado["p_valor"] >= 0.05
+        assert not resultado["promover"]
 
 
 class TestBootstrap:

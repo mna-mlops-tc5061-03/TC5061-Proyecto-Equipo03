@@ -134,19 +134,28 @@ def perfil_horario(perfil: pd.DataFrame, columna: str, ruta: Path) -> Path:
     return _guardar(fig, ruta)
 
 
+<<<<<<< HEAD
 def drift_y_error_por_mes(
     por_mes: pd.DataFrame,
     umbral: float,
     ruta: Path,
     umbral_mae: float | None = None,
 ) -> Path:
+=======
+def drift_y_error_por_mes(por_mes: pd.DataFrame, umbral: float, ruta: Path) -> Path:
+>>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
     """Grafica la evolución mensual del `drift_share` y del MAE del champion contra el baseline (P1).
 
     Args:
         por_mes: Tabla mensual con `mes`, `drift_share`, `mae_champion` y `mae_baseline`.
+<<<<<<< HEAD
         umbral: Umbral de `drift_share` propuesto como alerta temprana.
         ruta: Ruta del archivo PNG.
         umbral_mae: Límite máximo de MAE (`mae_referencia * (1 + TOLERANCIA_MAE_P1)`), opcional.
+=======
+        umbral: Umbral de `drift_share` propuesto como disparador de reentrenamiento.
+        ruta: Ruta del archivo PNG.
+>>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
 
     Returns:
         La ruta de la gráfica.
@@ -155,7 +164,11 @@ def drift_y_error_por_mes(
     meses = por_mes["mes"].astype(str)
 
     ax_drift.plot(meses, por_mes["drift_share"], marker="o", color="#1f77b4", label="drift_share")
+<<<<<<< HEAD
     ax_drift.axhline(umbral, color="#d62728", linestyle="--", label=f"alerta ({umbral:.2f})")
+=======
+    ax_drift.axhline(umbral, color="#d62728", linestyle="--", label=f"umbral ({umbral:.2f})")
+>>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
     ax_drift.set(
         xlabel="mes",
         ylabel="proporción de columnas con drift",
@@ -173,10 +186,13 @@ def drift_y_error_por_mes(
         linestyle="--",
         label="baseline",
     )
+<<<<<<< HEAD
     if umbral_mae is not None:
         ax_mae.axhline(
             umbral_mae, color="#d62728", linestyle=":", label=f"límite MAE ({umbral_mae:.2f})"
         )
+=======
+>>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
     ax_mae.set(
         xlabel="mes",
         ylabel="MAE (viajes por estación y día)",

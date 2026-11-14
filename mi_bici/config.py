@@ -106,6 +106,13 @@ PERIODO_ACTUAL = ("2026-08-01", "2026-10-31")
 # El reentrenamiento usa lo anterior a este corte y el A/B se evalúa desde él, con un mes que
 # ninguna de las dos versiones vio
 CORTE_AB = "2026-10-01"
+# A/B de P1. La regla se fija antes de correrlo: el challenger reemplaza al champion solo si el
+# intervalo de 95 % de la diferencia de MAE excluye 0 a su favor y el Wilcoxon pareado da
+# p < ALFA_AB. El intervalo remuestrea estaciones y no filas, porque los días de una misma
+# estación no son independientes
+ALFA_AB = 0.05
+N_BOOTSTRAP = 2000
+AB_DIR = REPORTS_DIR / "ab_testing"
 
 # Métrica con que se elige el modelo de cada pregunta y si mayor es mejor. Un candidato se acepta
 # si le gana al baseline en esta métrica en validación y también en prueba. P3 no tiene prueba y

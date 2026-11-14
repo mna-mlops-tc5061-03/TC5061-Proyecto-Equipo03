@@ -1,8 +1,10 @@
-"""Monitoreo de P1 con Evidently: drift por variable y calidad de los datos.
+"""Monitoreo de P1 con Evidently: drift por variable, calidad de datos y evolución mensual.
 
 Compara el periodo de referencia (entrenamiento del champion de P1) con el periodo actual
-(producción), incluyendo la predicción del champion y el objetivo `viajes`. Guarda el HTML y la
-tabla de resultados en `reports/evidently/` y los registra en un run de MLflow.
+(producción), incluyendo la predicción del champion y el objetivo `viajes`. Además evalúa mes a mes
+(`2026-08`, `2026-09` y `2026-10`) cómo evolucionan el `drift_share` y el MAE del champion frente
+al baseline para sustentar el disparador de reentrenamiento. Guarda el HTML, las tablas y la
+gráfica en `reports/evidently/` y los registra en un run de MLflow.
 
 python -m mi_bici.monitoreo
 """
@@ -14,10 +16,13 @@ from evidently.presets import DataDriftPreset, DataSummaryPreset
 from loguru import logger
 import mlflow
 import pandas as pd
+from sklearn.metrics import mean_absolute_error
 import typer
 
+from mi_bici import plots
 from mi_bici.config import (
     ALIAS_PRODUCCION,
+    BASELINE_P1,
     CATEGORICAS_P1,
     COLUMNA_FECHA_P1,
     COLUMNA_PREDICCION,
@@ -26,9 +31,11 @@ from mi_bici.config import (
     EXPERIMENT_NAME,
     MODELOS_REGISTRO,
     NUMERICAS_P1,
+    OBJETIVO_P1,
     PERIODO_ACTUAL,
     PERIODO_REFERENCIA,
     TRACKING_URI,
+    UMBRAL_DRIFT_SHARE,
     VARIABLES_P1,
 )
 from mi_bici.dataset import load_processed_stations, load_processed_travels
@@ -40,6 +47,8 @@ app = typer.Typer()
 
 HTML_FILE = EVIDENTLY_DIR / "p1_drift.html"
 CSV_FILE = EVIDENTLY_DIR / "p1_drift.csv"
+POR_MES_CSV_FILE = EVIDENTLY_DIR / "p1_por_mes.csv"
+POR_MES_PNG_FILE = EVIDENTLY_DIR / "p1_por_mes.png"
 COLUMNAS_P1 = [*NUMERICAS_P1, *CATEGORICAS_P1]
 
 
@@ -138,7 +147,8 @@ def correr_reporte(
     ds_actual = Dataset.from_pandas(actual[COLUMNAS_P1], data_definition=definicion)
     ds_referencia = Dataset.from_pandas(referencia[COLUMNAS_P1], data_definition=definicion)
 
-    report = Report([DataDriftPreset(), DataSummaryPreset()])
+    presets = [DataDriftPreset(), DataSummaryPreset()] if html is not None else [DataDriftPreset()]
+    report = Report(presets)
     snapshot = report.run(ds_actual, ds_referencia)
 
     tabla, drift_share = _extraer_drift(snapshot)
@@ -151,28 +161,95 @@ def correr_reporte(
     return tabla, drift_share
 
 
+def evaluar_por_mes(
+    actual: pd.DataFrame,
+    referencia: pd.DataFrame,
+    csv: Path | None = POR_MES_CSV_FILE,
+    png: Path | None = POR_MES_PNG_FILE,
+) -> pd.DataFrame:
+    """Calcula `drift_share` contra la referencia y el MAE del champion y del baseline por mes.
+
+    Nota sobre artefactos vs cambios reales (Chip Huyen, cap. 8):
+    - `festivo` no es un cambio real: agosto y octubre no tienen días de descanso obligatorio en
+      `FESTIVOS`, por lo que su distancia de Jensen-Shannon sube (~0.083) solo por el calendario.
+    - `capacidad` tampoco es un cambio de comportamiento: refleja la actualización de la
+      nomenclatura vigente de estaciones (#132) y las estaciones activas en el mes (~0.084–0.091).
+    - El drift real ocurre en las 5 columnas de demanda (`viajes_lag_1`, `viajes_lag_7`,
+      `viajes_media_7`, `viajes` y `prediccion`), que en octubre triplican el umbral de 0.1 y
+      elevan el MAE del champion de 4.67 (agosto) y 6.42 (septiembre) a 7.48 (octubre).
+
+    Args:
+        actual: Conjunto del periodo actual con `fecha`, variables, `viajes` y `prediccion`.
+        referencia: Conjunto del periodo de referencia.
+        csv: Ruta donde guardar la tabla mensual CSV, o `None` para no guardarla.
+        png: Ruta donde guardar la gráfica de las dos series, o `None` para no guardarla.
+
+    Returns:
+        DataFrame con una fila por mes (`mes`, `filas`, `drift_share`, `columnas_con_drift`,
+        `mae_champion`, `mae_baseline` y `reentrenar`).
+    """
+    meses = pd.to_datetime(actual[COLUMNA_FECHA_P1]).dt.strftime("%Y-%m")
+    filas = []
+    for mes, datos_mes in actual.groupby(meses, sort=True):
+        tabla_mes, drift_share = correr_reporte(datos_mes, referencia, html=None, csv=None)
+        mae_champion = float(
+            mean_absolute_error(datos_mes[OBJETIVO_P1], datos_mes[COLUMNA_PREDICCION])
+        )
+        mae_baseline = float(mean_absolute_error(datos_mes[OBJETIVO_P1], datos_mes[BASELINE_P1]))
+        filas.append(
+            {
+                "mes": str(mes),
+                "filas": len(datos_mes),
+                "drift_share": drift_share,
+                "columnas_con_drift": int(tabla_mes["drift"].sum()),
+                "mae_champion": mae_champion,
+                "mae_baseline": mae_baseline,
+                "reentrenar": bool(drift_share >= UMBRAL_DRIFT_SHARE),
+            }
+        )
+    por_mes = pd.DataFrame(filas)
+    if csv is not None:
+        csv.parent.mkdir(parents=True, exist_ok=True)
+        por_mes.to_csv(csv, index=False)
+    if png is not None:
+        png.parent.mkdir(parents=True, exist_ok=True)
+        plots.drift_y_error_por_mes(por_mes, UMBRAL_DRIFT_SHARE, png)
+    return por_mes
+
+
 def registrar_monitoreo(
     referencia: pd.DataFrame,
     actual: pd.DataFrame,
     html: Path = HTML_FILE,
     csv: Path = CSV_FILE,
+    por_mes_csv: Path = POR_MES_CSV_FILE,
+    por_mes_png: Path = POR_MES_PNG_FILE,
 ) -> tuple[str, pd.DataFrame, dict]:
-    """Genera el reporte de Evidently y registra el run de monitoreo en MLflow.
+    """Genera el reporte de Evidently, la evolución mensual y registra el run en MLflow.
 
     Args:
         referencia: Conjunto del periodo de referencia.
         actual: Conjunto del periodo actual.
         html: Ruta donde se guarda el reporte HTML.
         csv: Ruta donde se guarda la tabla CSV de drift.
+        por_mes_csv: Ruta donde se guarda la tabla CSV mensual.
+        por_mes_png: Ruta donde se guarda la gráfica mensual de drift y MAE.
 
     Returns:
         `(run_id, tabla, metricas)` del run registrado en MLflow.
     """
     tabla, drift_share = correr_reporte(actual, referencia, html=html, csv=csv)
+    por_mes = evaluar_por_mes(actual, referencia, csv=por_mes_csv, png=por_mes_png)
     metricas = {
         "drift_share": drift_share,
         **{f"drift_{fila.variable}": float(fila.valor) for fila in tabla.itertuples()},
     }
+    for fila in por_mes.itertuples():
+        sufijo = fila.mes.replace("-", "_")
+        metricas[f"drift_share_{sufijo}"] = float(fila.drift_share)
+        metricas[f"mae_champion_{sufijo}"] = float(fila.mae_champion)
+        metricas[f"mae_baseline_{sufijo}"] = float(fila.mae_baseline)
+
     parametros = {
         "referencia_inicio": PERIODO_REFERENCIA[0],
         "referencia_fin": PERIODO_REFERENCIA[1],
@@ -182,6 +259,7 @@ def registrar_monitoreo(
         "periodo_actual": f"{PERIODO_ACTUAL[0]}..{PERIODO_ACTUAL[1]}",
         "filas_referencia": len(referencia),
         "filas_actual": len(actual),
+        "umbral_drift_share": UMBRAL_DRIFT_SHARE,
         "data_version": version_datos(),
     }
     etiquetas = {
@@ -197,14 +275,15 @@ def registrar_monitoreo(
         mlflow.set_tags(etiquetas)
         mlflow.log_params(parametros)
         mlflow.log_metrics(metricas)
-        mlflow.log_artifact(str(html), artifact_path="evidently")
-        mlflow.log_artifact(str(csv), artifact_path="evidently")
+        for archivo in (html, csv, por_mes_csv, por_mes_png):
+            if archivo is not None and archivo.exists():
+                mlflow.log_artifact(str(archivo), artifact_path="evidently")
     return run.info.run_id, tabla, metricas
 
 
 @app.command()
 def main() -> None:
-    """Genera el reporte de drift y calidad de datos de P1 y lo registra en MLflow."""
+    """Genera el reporte de drift, la evolución por mes de P1 y los registra en MLflow."""
     referencia, actual = conjuntos()
     logger.info(
         f"Monitoreo P1: referencia {PERIODO_REFERENCIA[0]}..{PERIODO_REFERENCIA[1]} "
@@ -214,8 +293,9 @@ def main() -> None:
     run_id, tabla, metricas = registrar_monitoreo(referencia, actual)
     con_drift = int(tabla["drift"].sum())
     logger.success(
-        f"Reporte guardado en {HTML_FILE} y {CSV_FILE} (run {run_id}: "
-        f"{con_drift}/{len(tabla)} columnas con drift, drift_share={metricas['drift_share']:.3f})"
+        f"Reporte guardado en {HTML_FILE}, {CSV_FILE}, {POR_MES_CSV_FILE} y {POR_MES_PNG_FILE} "
+        f"(run {run_id}: {con_drift}/{len(tabla)} columnas con drift, "
+        f"drift_share={metricas['drift_share']:.3f})"
     )
 
 

@@ -23,6 +23,8 @@ REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 # Reportes de DeepChecks. El HTML muestra filas de ejemplo, por eso la carpeta no va a Git
 DEEPCHECKS_DIR = REPORTS_DIR / "deepchecks"
+# Reportes de monitoreo con Evidently (entrega 5)
+EVIDENTLY_DIR = REPORTS_DIR / "evidently"
 
 # Salidas de la ingesta. El manifiesto es lo único de data/ que se versiona en Git
 VIAJES_DIR = PROCESSED_DATA_DIR / "viajes"
@@ -216,6 +218,22 @@ BASELINE_P1 = "viajes_lag_7"
 COLUMNA_FECHA_P2 = "bloque"
 OBJETIVO_P2 = "riesgo"
 BASELINE_P2 = "riesgo_semana_anterior"
+
+# Monitoreo de P1 con Evidently: además de las variables y el objetivo, incluye la predicción del
+# champion. Se usan los métodos y umbrales por defecto de Evidently (con más de 1,000 filas:
+# distancia de Wasserstein con umbral 0.1 en numéricas y Jensen-Shannon con umbral 0.1 en categóricas)
+COLUMNA_PREDICCION = "prediccion"
+NUMERICAS_P1 = [
+    "viajes_lag_1",
+    "viajes_lag_7",
+    "viajes_media_7",
+    "capacidad",
+    OBJETIVO_P1,
+    COLUMNA_PREDICCION,
+]
+CATEGORICAS_P1 = ["dia_semana", "festivo"]
+NUMERICAS_MONITOREO_P1 = NUMERICAS_P1
+CATEGORICAS_MONITOREO_P1 = CATEGORICAS_P1
 
 SEMILLA = 42
 

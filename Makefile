@@ -143,6 +143,12 @@ validar-datos:
 	$(PYTHON_INTERPRETER) -m mi_bici.validacion drift
 
 
+## Genera el reporte de drift y calidad de datos de P1 con Evidently y lo registra en MLflow
+.PHONY: drift
+drift:
+	$(PYTHON_INTERPRETER) -m mi_bici.monitoreo
+
+
 ## Levanta la API localmente con uvicorn
 .PHONY: api
 api:

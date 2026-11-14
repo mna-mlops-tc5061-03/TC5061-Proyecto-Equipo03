@@ -7,6 +7,8 @@ tqdm==4.70.1
 typer==0.27.3
 mlflow==3.17.2
 scikit-learn==1.9.1
+# Wilcoxon del A/B. Llega con scikit-learn, pero se usa directo
+scipy==1.18.1
 pandas==3.0.6
 numpy==2.5.3
 pyarrow==25.0.1

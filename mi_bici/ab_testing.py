@@ -2,7 +2,7 @@
 
 Las dos versiones predicen las mismas filas, de `CORTE_AB` al fin de `PERIODO_ACTUAL`. Se miden
 con las métricas de siempre y el baseline como referencia, y la diferencia se prueba con un
-Wilcoxon pareado sobre los errores absolutos y un intervalo bootstrap que remuestrea estaciones.
+Wilcoxon pareado sobre el MAE de cada estación y un intervalo bootstrap que remuestrea estaciones.
 La regla de decisión está fija en `config.py`. Solo con `--promover` se mueven los aliases.
 
 python -m mi_bici.ab_testing
@@ -55,11 +55,17 @@ def datos_ab() -> pd.DataFrame:
 
     Returns:
         Las filas que se evalúan, con las variables de P1, el objetivo y la estación.
+
+    Raises:
+        ValueError: Si no hay viajes desde `CORTE_AB`.
     """
     demanda = demanda_diaria(
         load_processed_travels(hasta=PERIODO_ACTUAL[1]), load_processed_stations()
     )
-    return demanda[demanda[COLUMNA_FECHA_P1] >= CORTE_AB].reset_index(drop=True)
+    datos = demanda[demanda[COLUMNA_FECHA_P1] >= CORTE_AB].reset_index(drop=True)
+    if datos.empty:
+        raise ValueError(f"No hay viajes desde {CORTE_AB}: corre make data para descargarlos")
+    return datos
 
 
 def intervalo_bootstrap(
@@ -96,7 +102,9 @@ def intervalo_bootstrap(
 def comparar(datos: pd.DataFrame, pred_a, pred_b, alfa: float = ALFA_AB) -> dict:
     """Compara dos predicciones de las mismas filas y aplica la regla de decisión.
 
-    La diferencia es MAE de A menos MAE de B, así que es positiva cuando B se equivoca menos.
+    La diferencia es MAE de A menos MAE de B, así que es positiva cuando B se equivoca menos. El
+    Wilcoxon compara el MAE de cada estación y no cada fila: los días de una estación se parecen
+    entre sí, y contarlos como pares independientes daría un p-valor más chico de lo que es.
 
     Args:
         datos: Filas evaluadas, con el objetivo, `estacion_id` y `dia_semana`.
@@ -111,9 +119,19 @@ def comparar(datos: pd.DataFrame, pred_a, pred_b, alfa: float = ALFA_AB) -> dict
     y = datos[OBJETIVO_P1].to_numpy()
     error_a, error_b = np.abs(y - np.asarray(pred_a)), np.abs(y - np.asarray(pred_b))
     diferencias = error_a - error_b
-    bajo, alto = intervalo_bootstrap(diferencias, datos["estacion_id"].to_numpy())
+    estaciones = datos["estacion_id"].to_numpy()
+    bajo, alto = intervalo_bootstrap(diferencias, estaciones)
+    mae_estacion = (
+        pd.DataFrame({"a": error_a, "b": error_b, "estacion": estaciones})
+        .groupby("estacion")
+        .mean()
+    )
     # Sin ninguna diferencia (dos modelos iguales) Wilcoxon no está definido: no hay evidencia
-    p_valor = float(wilcoxon(error_a, error_b).pvalue) if diferencias.any() else 1.0
+    p_valor = (
+        float(wilcoxon(mae_estacion["a"], mae_estacion["b"]).pvalue)
+        if (mae_estacion["a"] != mae_estacion["b"]).any()
+        else 1.0
+    )
     fin_de_semana = datos["dia_semana"].isin(FIN_DE_SEMANA).to_numpy()
     return {
         "delta_mae": float(diferencias.mean()),

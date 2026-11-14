@@ -107,9 +107,9 @@ PERIODO_ACTUAL = ("2026-08-01", "2026-10-31")
 # ninguna de las dos versiones vio
 CORTE_AB = "2026-10-01"
 # A/B de P1. La regla se fija antes de correrlo: el challenger reemplaza al champion solo si el
-# intervalo de 95 % de la diferencia de MAE excluye 0 a su favor y el Wilcoxon pareado da
-# p < ALFA_AB. El intervalo remuestrea estaciones y no filas, porque los días de una misma
-# estación no son independientes
+# intervalo de 95 % de la diferencia de MAE excluye 0 a su favor y el Wilcoxon pareado sobre el
+# MAE de cada estación da p < ALFA_AB. Las dos pruebas usan la estación como unidad y no la fila,
+# porque los días de una misma estación no son independientes
 ALFA_AB = 0.05
 N_BOOTSTRAP = 2000
 AB_DIR = REPORTS_DIR / "ab_testing"

@@ -234,6 +234,12 @@ NUMERICAS_P1 = [
 CATEGORICAS_P1 = ["dia_semana", "festivo"]
 NUMERICAS_MONITOREO_P1 = NUMERICAS_P1
 CATEGORICAS_MONITOREO_P1 = CATEGORICAS_P1
+# Disparador de reentrenamiento propuesto para P1: proporción de columnas con drift (50 %, valor
+# por defecto de DataDriftPreset en Evidently). De las 8 columnas monitoreadas, 3 son de calendario
+# o catálogo (dia_semana, festivo y capacidad), así que exigir >= 0.5 (al menos 4 de 8 columnas)
+# evita falsas alarmas por artefactos de calendario (ej. octubre sin festivos) o de nomenclatura
+# (#132) y solo se activa cuando cambian las variables de demanda, el objetivo y la predicción
+UMBRAL_DRIFT_SHARE = 0.5
 
 SEMILLA = 42
 

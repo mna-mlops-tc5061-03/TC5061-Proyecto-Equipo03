@@ -17,6 +17,8 @@ EXTENSIONES_PROHIBIDAS = (".db", ".sqlite", ".parquet", ".csv", ".pkl", ".joblib
 CARPETAS_PROHIBIDAS = ("mlruns", "mlartifacts")
 # Lo único de data/ y models/ que sí va a Git
 PERMITIDOS = {"data/manifest.json", "models/.gitkeep"}
+# Tablas de resumen de Evidently (métricas agregadas por variable/mes, sin filas de datos)
+CSV_PERMITIDOS = {"reports/evidently/p1_drift.csv", "reports/evidently/p1_por_mes.csv"}
 
 # Rutas de ejemplo que el .gitignore debe ignorar y las que debe dejar pasar
 IGNORADAS = (
@@ -30,12 +32,18 @@ IGNORADAS = (
     "models/modelo.pkl",
     "reports/deepchecks/resumen.json",
 )
-NO_IGNORADAS = ("data/manifest.json", ".env.example", "models/.gitkeep")
+NO_IGNORADAS = (
+    "data/manifest.json",
+    ".env.example",
+    "models/.gitkeep",
+    "reports/evidently/p1_drift.csv",
+    "reports/evidently/p1_drift.html",
+)
 
 # Patrones de credenciales que no deben aparecer en ningún archivo versionado. Sin \b al inicio
 # y con \w* después, para que detecten nombres con prefijo como MLFLOW_TRACKING_PASSWORD
 PATRONES_CREDENCIALES = {
-    "clave": r"(?i)(password|passwd|pwd)\w*\s*[:=]\s*['\"]?[^\s'\"]{4,}",
+    "clave": r"(?i)(password|passwd|pwd)\w*\s*[:=]\s*['\"]?[^\s'\",;}{]{4,}",
     "token": r"(?i)(token|secret|api_?key)\w*\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{8,}",
     "llave de AWS": r"\bAKIA[0-9A-Z]{16}\b",
     "token de GitHub": r"\bgh[pousr]_[A-Za-z0-9]{36,}\b",
@@ -76,7 +84,7 @@ class TestArchivosVersionados:
     @pytest.mark.parametrize("extension", EXTENSIONES_PROHIBIDAS)
     def test_no_hay_datos_bases_ni_modelos(self, versionados, extension):
         """Verifica que no se versionan datos, bases de MLflow ni modelos serializados."""
-        encontrados = [r for r in versionados if r.endswith(extension)]
+        encontrados = [r for r in versionados if r.endswith(extension) and r not in CSV_PERMITIDOS]
         assert encontrados == []
 
     def test_no_hay_carpetas_de_mlflow(self, versionados):

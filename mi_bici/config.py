@@ -252,6 +252,9 @@ MODELOS_URI = {
 # Máximo de observaciones por petición. Las 484 estaciones de la nomenclatura de sep 2026 caben en
 # una sola, con margen por si se agregan más
 MAX_OBSERVACIONES = 1000
+# Máximo de anclajes que acepta la API. La estación más grande tiene 39; el tope deja margen
+# para estaciones nuevas y evita que un número enorme se desborde al convertirlo a int64
+CAPACIDAD_MAXIMA = 100
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135

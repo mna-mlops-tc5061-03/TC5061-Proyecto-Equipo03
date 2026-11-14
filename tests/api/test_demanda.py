@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from mi_bici.api.esquemas import EJEMPLO_P1
-from mi_bici.config import MAX_OBSERVACIONES, VARIABLES_P1
+from mi_bici.config import CAPACIDAD_MAXIMA, MAX_OBSERVACIONES, VARIABLES_P1
 
 RUTA = "/predict/demanda"
 
@@ -55,6 +55,11 @@ class TestCasosLimite:
 
         assert cliente.post(RUTA, json={"observaciones": [cero]}).status_code == 200
 
+    def test_capacidad_maxima_es_valida(self, cliente):
+        maxima = observacion(capacidad=CAPACIDAD_MAXIMA)
+
+        assert cliente.post(RUTA, json={"observaciones": [maxima]}).status_code == 200
+
     def test_lote_del_tamano_maximo(self, cliente):
         respuesta = cliente.post(RUTA, json=lote(MAX_OBSERVACIONES))
 
@@ -70,6 +75,9 @@ class TestCasosLimite:
             {"dia_semana": -1},
             {"dia_semana": 7},
             {"capacidad": 0},
+            {"capacidad": CAPACIDAD_MAXIMA + 1},
+            {"capacidad": 1e30},
+            {"capacidad": 2**63},
             {"festivo": "quizás"},
             {"dia_semana": "martes"},
         ],
@@ -102,7 +110,7 @@ class TestCasosLimite:
         assert cliente.post(RUTA, json=lote(MAX_OBSERVACIONES + 1)).status_code == 422
 
     @pytest.mark.parametrize("valor", ["NaN", "Infinity", "-Infinity"])
-    @pytest.mark.parametrize("campo", ["viajes_lag_1", "viajes_lag_7", "viajes_media_7"])
+    @pytest.mark.parametrize("campo", VARIABLES_P1)
     def test_numeros_no_finitos_dan_422(self, cliente, campo, valor):
         """JSON admite NaN e Infinity, pero no son valores válidos de ninguna variable."""
         cuerpo = json.dumps({"observaciones": [observacion(**{campo: 0.0})]})
@@ -115,7 +123,8 @@ class TestCasosLimite:
         assert respuesta.status_code == 422
         error = respuesta.json()["detail"][0]
         assert error["loc"] == ["body", "observaciones", 0, campo]
-        assert error["type"] == "finite_number"
+        # festivo se valida como booleano, así que su error no es finite_number
+        assert error["type"] == ("bool_type" if campo == "festivo" else "finite_number")
 
     def test_el_modelo_no_se_llama_si_la_entrada_es_invalida(self, cliente, servicio_demanda):
         respuesta = cliente.post(RUTA, json={"observaciones": [observacion(dia_semana=7)]})

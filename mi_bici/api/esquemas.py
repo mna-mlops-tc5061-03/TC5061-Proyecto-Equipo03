@@ -4,9 +4,9 @@ Los nombres de los campos son los de `VARIABLES_P1` y `VARIABLES_P2`, que son la
 modelos registrados. Los rangos siguen la forma en que `features.py` calcula cada variable.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from mi_bici.config import BLOQUE_HORAS, MAX_OBSERVACIONES
+from mi_bici.config import BLOQUE_HORAS, CAPACIDAD_MAXIMA, MAX_OBSERVACIONES
 
 # Las 3 filas del serving_input_example del champion de P1, para que /docs traiga un ejemplo que
 # funciona tal cual
@@ -96,7 +96,9 @@ class ObservacionDemanda(BaseModel):
     )
     dia_semana: int = Field(ge=0, le=6, description="Día de la semana: 0 es lunes y 6 domingo")
     festivo: bool = Field(description="Si el día es de descanso obligatorio")
-    capacidad: int = Field(gt=0, description="Anclajes de la estación")
+    capacidad: int = Field(
+        gt=0, le=CAPACIDAD_MAXIMA, description=f"Anclajes de la estación, hasta {CAPACIDAD_MAXIMA}"
+    )
 
 
 class SolicitudDemanda(BaseModel):
@@ -148,14 +150,30 @@ class ObservacionRiesgo(BaseModel):
     salidas_lag_1: float = Field(ge=0, description="Viajes que salieron en el bloque anterior")
     llegadas_lag_1: float = Field(ge=0, description="Viajes que llegaron en el bloque anterior")
     riesgo_semana_anterior: float = Field(
-        ge=0, le=1, description="1 si el mismo bloque de la semana anterior estuvo en riesgo"
+        ge=0,
+        le=1,
+        description="1 si el mismo bloque de la semana anterior estuvo en riesgo y 0 si no",
     )
+    # Los bloques empiezan a las 0, 3, ..., 21 (features.py los arma con floor de 3 horas)
     hora: int = Field(
-        ge=0, le=23, description=f"Hora en que empieza el bloque de {BLOQUE_HORAS} horas"
+        ge=0,
+        le=24 - BLOQUE_HORAS,
+        multiple_of=BLOQUE_HORAS,
+        description=f"Hora en que empieza el bloque de {BLOQUE_HORAS} horas: 0, 3, ..., 21",
     )
     dia_semana: int = Field(ge=0, le=6, description="Día de la semana: 0 es lunes y 6 domingo")
     festivo: bool = Field(description="Si el día es de descanso obligatorio")
-    capacidad: int = Field(gt=0, description="Anclajes de la estación")
+    capacidad: int = Field(
+        gt=0, le=CAPACIDAD_MAXIMA, description=f"Anclajes de la estación, hasta {CAPACIDAD_MAXIMA}"
+    )
+
+    @field_validator("riesgo_semana_anterior")
+    @classmethod
+    def solo_cero_o_uno(cls, valor: float) -> float:
+        """Rechaza los valores entre 0 y 1: la variable es una bandera, no una probabilidad."""
+        if valor not in (0, 1):
+            raise ValueError("debe ser 0 o 1")
+        return valor
 
 
 class SolicitudRiesgo(BaseModel):

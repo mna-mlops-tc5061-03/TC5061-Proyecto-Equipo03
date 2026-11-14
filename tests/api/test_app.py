@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from mi_bici.api.esquemas import EJEMPLO_P2
-from mi_bici.config import MAX_OBSERVACIONES, VARIABLES_P2
+from mi_bici.config import CAPACIDAD_MAXIMA, MAX_OBSERVACIONES, VARIABLES_P2
 
 RUTA = "/predict/riesgo"
 
@@ -43,9 +43,23 @@ class TestCasosNormales:
 
 
 class TestCasosLimite:
-    @pytest.mark.parametrize("hora", [0, 23])
+    @pytest.mark.parametrize("hora", [0, 21])
     def test_horas_extremas_son_validas(self, cliente, hora):
         respuesta = cliente.post(RUTA, json={"observaciones": [observacion(hora=hora)]})
+
+        assert respuesta.status_code == 200
+
+    @pytest.mark.parametrize(
+        "cambios",
+        [
+            {"riesgo_semana_anterior": 0.0},
+            {"riesgo_semana_anterior": 1.0},
+            {"capacidad": CAPACIDAD_MAXIMA},
+        ],
+        ids=lambda c: "-".join(f"{k}={v}" for k, v in c.items()),
+    )
+    def test_valores_limite_son_validos(self, cliente, cambios):
+        respuesta = cliente.post(RUTA, json={"observaciones": [observacion(**cambios)]})
 
         assert respuesta.status_code == 200
 
@@ -60,13 +74,19 @@ class TestCasosLimite:
         [
             {"hora": -1},
             {"hora": 24},
+            {"hora": 7},
+            {"hora": 23},
             {"dia_semana": -1},
             {"dia_semana": 7},
             {"salidas_lag_1": -1.0},
             {"llegadas_lag_1": -1.0},
             {"riesgo_semana_anterior": -0.1},
             {"riesgo_semana_anterior": 1.1},
+            {"riesgo_semana_anterior": 0.5},
             {"capacidad": 0},
+            {"capacidad": CAPACIDAD_MAXIMA + 1},
+            {"capacidad": 1e30},
+            {"capacidad": 2**63},
             {"hora": "seis"},
             {"festivo": "quizás"},
         ],
@@ -107,16 +127,7 @@ class TestCasosLimite:
         assert respuesta.status_code == 422
 
     @pytest.mark.parametrize("valor", ["NaN", "Infinity", "-Infinity"])
-    @pytest.mark.parametrize(
-        "campo",
-        [
-            "flujo_neto_lag_1",
-            "flujo_neto_lag_2",
-            "salidas_lag_1",
-            "llegadas_lag_1",
-            "riesgo_semana_anterior",
-        ],
-    )
+    @pytest.mark.parametrize("campo", VARIABLES_P2)
     def test_numeros_no_finitos_dan_422(self, cliente, campo, valor):
         """JSON admite NaN e Infinity, pero no son valores válidos de ninguna variable."""
         cuerpo = json.dumps({"observaciones": [observacion(**{campo: 0.0})]})
@@ -129,7 +140,8 @@ class TestCasosLimite:
         assert respuesta.status_code == 422
         error = respuesta.json()["detail"][0]
         assert error["loc"] == ["body", "observaciones", 0, campo]
-        assert error["type"] == "finite_number"
+        # festivo se valida como booleano, así que su error no es finite_number
+        assert error["type"] == ("bool_type" if campo == "festivo" else "finite_number")
 
     def test_el_modelo_no_se_llama_si_la_entrada_es_invalida(self, cliente, servicio_riesgo):
         respuesta = cliente.post(RUTA, json={"observaciones": [observacion(hora=24)]})

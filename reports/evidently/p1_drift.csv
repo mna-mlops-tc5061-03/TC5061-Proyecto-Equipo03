@@ -1,0 +1,9 @@
+variable,metodo,valor,umbral,drift
+viajes_lag_1,Wasserstein distance (normed),0.10531090989368116,0.1,True
+viajes_lag_7,Wasserstein distance (normed),0.06912035385928268,0.1,False
+viajes_media_7,Wasserstein distance (normed),0.09645067102892395,0.1,False
+capacidad,Wasserstein distance (normed),0.08866595674324314,0.1,False
+viajes,Wasserstein distance (normed),0.10861470492488759,0.1,True
+prediccion,Wasserstein distance (normed),0.08191676262610337,0.1,False
+dia_semana,Jensen-Shannon distance,0.011454262707744049,0.1,False
+festivo,Jensen-Shannon distance,0.025569712915344357,0.1,False

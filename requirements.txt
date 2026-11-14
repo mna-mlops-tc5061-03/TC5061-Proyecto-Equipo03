@@ -22,4 +22,5 @@ pip-audit==2.10.1
 # Validación de datos. setuptools<81 porque DeepChecks 0.19.1 usa pkg_resources
 deepchecks==0.19.1
 setuptools<81
+evidently==0.7.23
 -e .

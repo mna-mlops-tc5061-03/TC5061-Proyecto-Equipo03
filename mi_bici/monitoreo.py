@@ -161,19 +161,8 @@ def evaluar_por_mes(
 ) -> pd.DataFrame:
     """Calcula `drift_share` contra la referencia y el MAE del champion y del baseline por mes.
 
-<<<<<<< HEAD
     Usa `drift_share >= UMBRAL_DRIFT_SHARE` como alerta temprana y dispara `reentrenar` cuando el
     MAE mensual del champion supera `mae_referencia * (1 + TOLERANCIA_MAE_P1)`.
-=======
-    Nota sobre artefactos vs cambios reales (Chip Huyen, cap. 8):
-    - `festivo` no es un cambio real: agosto y octubre no tienen días de descanso obligatorio en
-      `FESTIVOS`, por lo que su distancia de Jensen-Shannon sube (~0.083) solo por el calendario.
-    - `capacidad` tampoco es un cambio de comportamiento: refleja la actualización de la
-      nomenclatura vigente de estaciones (#132) y las estaciones activas en el mes (~0.084–0.091).
-    - El drift real ocurre en las 5 columnas de demanda (`viajes_lag_1`, `viajes_lag_7`,
-      `viajes_media_7`, `viajes` y `prediccion`), que en octubre triplican el umbral de 0.1 y
-      elevan el MAE del champion de 4.67 (agosto) y 6.42 (septiembre) a 7.48 (octubre).
->>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
 
     Args:
         actual: Conjunto del periodo actual con `fecha`, variables, `viajes` y `prediccion`.
@@ -183,17 +172,12 @@ def evaluar_por_mes(
 
     Returns:
         DataFrame con una fila por mes (`mes`, `filas`, `drift_share`, `columnas_con_drift`,
-<<<<<<< HEAD
         `mae_champion`, `mae_baseline`, `alerta_drift` y `reentrenar`).
     """
     mae_referencia = float(
         mean_absolute_error(referencia[OBJETIVO_P1], referencia[COLUMNA_PREDICCION])
     )
     umbral_mae = mae_referencia * (1 + TOLERANCIA_MAE_P1)
-=======
-        `mae_champion`, `mae_baseline` y `reentrenar`).
-    """
->>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
     meses = pd.to_datetime(actual[COLUMNA_FECHA_P1]).dt.strftime("%Y-%m")
     filas = []
     for mes, datos_mes in actual.groupby(meses, sort=True):
@@ -202,10 +186,7 @@ def evaluar_por_mes(
             mean_absolute_error(datos_mes[OBJETIVO_P1], datos_mes[COLUMNA_PREDICCION])
         )
         mae_baseline = float(mean_absolute_error(datos_mes[OBJETIVO_P1], datos_mes[BASELINE_P1]))
-<<<<<<< HEAD
         alerta_drift = bool(drift_share >= UMBRAL_DRIFT_SHARE)
-=======
->>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
         filas.append(
             {
                 "mes": str(mes),
@@ -214,12 +195,8 @@ def evaluar_por_mes(
                 "columnas_con_drift": int(tabla_mes["drift"].sum()),
                 "mae_champion": mae_champion,
                 "mae_baseline": mae_baseline,
-<<<<<<< HEAD
                 "alerta_drift": alerta_drift,
                 "reentrenar": bool(mae_champion > umbral_mae),
-=======
-                "reentrenar": bool(drift_share >= UMBRAL_DRIFT_SHARE),
->>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
             }
         )
     por_mes = pd.DataFrame(filas)
@@ -228,11 +205,7 @@ def evaluar_por_mes(
         por_mes.to_csv(csv, index=False)
     if png is not None:
         png.parent.mkdir(parents=True, exist_ok=True)
-<<<<<<< HEAD
         plots.drift_y_error_por_mes(por_mes, UMBRAL_DRIFT_SHARE, png, umbral_mae=umbral_mae)
-=======
-        plots.drift_y_error_por_mes(por_mes, UMBRAL_DRIFT_SHARE, png)
->>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
     return por_mes
 
 
@@ -277,10 +250,7 @@ def registrar_monitoreo(
         "filas_referencia": len(referencia),
         "filas_actual": len(actual),
         "umbral_drift_share": UMBRAL_DRIFT_SHARE,
-<<<<<<< HEAD
         "tolerancia_mae_p1": TOLERANCIA_MAE_P1,
-=======
->>>>>>> b01739d (feat(monitoreo): evolucion mensual de drift y mae)
         "data_version": version_datos(),
     }
     etiquetas = {

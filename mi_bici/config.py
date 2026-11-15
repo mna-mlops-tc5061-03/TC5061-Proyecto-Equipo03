@@ -239,6 +239,14 @@ NUMERICAS_P1 = [
     COLUMNA_PREDICCION,
 ]
 CATEGORICAS_P1 = ["dia_semana", "festivo"]
+# Alerta temprana de drift para P1: proporción de columnas con drift (50 %, valor por defecto de
+# DataDriftPreset en Evidently). El drift por sí solo puede disparar cuando baja la demanda sin que
+# suba el error, o callar cuando el error ya creció; por eso se usa como alerta temprana mientras
+# llegan las etiquetas y se combina con la tolerancia de MAE para decidir el reentrenamiento.
+UMBRAL_DRIFT_SHARE = 0.5
+# Tolerancia de degradación del MAE del champion frente al MAE del periodo de referencia (15 %).
+# Cuando el MAE mensual supera `mae_referencia * (1 + TOLERANCIA_MAE_P1)` se recomienda reentrenar.
+TOLERANCIA_MAE_P1 = 0.15
 
 SEMILLA = 42
 

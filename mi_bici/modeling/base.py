@@ -34,6 +34,7 @@ from mi_bici.config import (
     MANIFEST_FILE,
     METRICA_SELECCION,
     PROJ_ROOT,
+    REPORTS_DIR,
     SEMILLA,
     TRACKING_URI,
 )
@@ -115,7 +116,10 @@ def version_datos(ruta: Path = MANIFEST_FILE) -> str:
 
 
 def estado_git() -> dict:
-    """Obtiene el commit actual y si hay cambios sin guardar.
+    """Obtiene el commit actual y si hay cambios sin guardar fuera de `reports/`.
+
+    `reports/` solo guarda salidas y ningún run lee de ahí: los reportes que escribe la misma
+    corrida, o que se regeneran sobre los versionados, no la marcan como sucia.
 
     Returns:
         Diccionario con `git_commit` (o `"sin_git"`) y `git_dirty` (`"True"` o `"False"`).
@@ -130,7 +134,9 @@ def estado_git() -> dict:
 
     return {
         "git_commit": git("rev-parse", "HEAD") or "sin_git",
-        "git_dirty": str(bool(git("status", "--porcelain"))),
+        "git_dirty": str(
+            bool(git("status", "--porcelain", "--", ".", f":(exclude){REPORTS_DIR.name}"))
+        ),
     }
 
 

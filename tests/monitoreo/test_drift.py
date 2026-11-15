@@ -101,44 +101,38 @@ class TestOrdenArgumentos:
         assert bool(_fila_variable(tabla_correcta, "viajes_lag_1")["drift"]) is True
         assert bool(_fila_variable(tabla_invertida, "viajes_lag_1")["drift"]) is False
 
-    def test_registrar_monitoreo_pasa_actual_primero_a_correr_reporte(
-        self, referencia_y_actual, tmp_path, monkeypatch
+    def test_registrar_monitoreo_pasa_actual_primero_y_registra_en_mlflow(
+        self, referencia_y_actual, mlflow_temporal, tmp_path
     ):
-        """Verifica que `registrar_monitoreo(referencia, actual)` invierte a `(actual, referencia)`."""
+        """Verifica el orden `(actual, referencia)` y que el run queda en MLflow con sus artefactos."""
         referencia, actual = referencia_y_actual
         actual = actual.copy()
         indices_pico = actual.index[: len(actual) // 100]
         actual.loc[indices_pico, "viajes_lag_1"] = actual.loc[indices_pico, "viajes_lag_1"] + 100.0
 
-        monkeypatch.setattr("mi_bici.monitoreo.conectar_mlflow", lambda *a, **kw: None)
-        monkeypatch.setattr("mi_bici.monitoreo.mlflow.set_experiment", lambda *a, **kw: None)
-        monkeypatch.setattr("mi_bici.monitoreo.mlflow.set_tags", lambda *a, **kw: None)
-        monkeypatch.setattr("mi_bici.monitoreo.mlflow.log_params", lambda *a, **kw: None)
-        monkeypatch.setattr("mi_bici.monitoreo.mlflow.log_metrics", lambda *a, **kw: None)
-        monkeypatch.setattr("mi_bici.monitoreo.mlflow.log_artifact", lambda *a, **kw: None)
-
-        class _RunFalso:
-            info = type("Info", (), {"run_id": "run_sintetico"})()
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-        monkeypatch.setattr("mi_bici.monitoreo.mlflow.start_run", lambda *a, **kw: _RunFalso())
-
-        _, tabla, metricas = registrar_monitoreo(
+        run_id, tabla, metricas = registrar_monitoreo(
             referencia,
             actual,
-            html=None,
-            csv=tmp_path / "drift.csv",
-            por_mes_csv=tmp_path / "mes.csv",
-            por_mes_png=tmp_path / "mes.png",
+            html=tmp_path / "p1_drift.html",
+            csv=tmp_path / "p1_drift.csv",
+            por_mes_csv=tmp_path / "p1_por_mes.csv",
+            por_mes_png=tmp_path / "p1_por_mes.png",
         )
 
         assert bool(_fila_variable(tabla, "viajes_lag_1")["drift"]) is True
         assert metricas["drift_share"] == pytest.approx(1 / len(COLUMNAS_P1))
+
+        run = mlflow_temporal.get_run(run_id)
+        assert run.data.tags["question"] == "p1"
+        assert run.data.tags["stage_of_work"] == "monitoring"
+        assert run.data.metrics["drift_share"] == pytest.approx(1 / len(COLUMNAS_P1))
+        artefactos = {a.path for a in mlflow_temporal.list_artifacts(run_id, path="evidently")}
+        assert artefactos == {
+            "evidently/p1_drift.html",
+            "evidently/p1_drift.csv",
+            "evidently/p1_por_mes.csv",
+            "evidently/p1_por_mes.png",
+        }
 
 
 class TestPeriodosSinTraslape:
@@ -228,31 +222,42 @@ class TestModeloFalsoSinMLflow:
             assert COLUMNA_PREDICCION in df.columns
             np.testing.assert_allclose(df[COLUMNA_PREDICCION], df["viajes_media_7"] + 1.0)
 
-    def test_evaluar_por_mes_detecta_mes_con_drift_y_mayor_error(
+    def test_evaluar_por_mes_separa_alerta_de_drift_y_reentrenamiento_por_mae(
         self, referencia_y_actual, tmp_path
     ):
-        """Verifica la tabla y gráfica mensual cuando octubre presenta drift y mayor MAE."""
+        """Verifica los tres casos mensuales: drift sin error, error sin drift y ambos juntos."""
         referencia, base_actual = referencia_y_actual
-        meses_fechas = ("2026-08-15", "2026-09-15", "2026-10-15")
-        partes = []
-        for fecha_txt in meses_fechas:
-            copia = base_actual.copy()
-            copia[COLUMNA_FECHA_P1] = pd.Timestamp(fecha_txt)
-            if fecha_txt.startswith("2026-10"):
-                for col in NUMERICAS_P1:
-                    if col != "capacidad":
-                        copia[col] = copia[col] + 25.0
-                # El objetivo crece más que la predicción para elevar el MAE del champion en octubre
-                copia["viajes"] = copia["viajes"] + 10.0
-            partes.append(copia)
-        actual = pd.concat(partes, ignore_index=True)
+
+        # 2026-08: drift en las 5 columnas de demanda, pero error idéntico al de referencia
+        agosto = base_actual.copy()
+        agosto[COLUMNA_FECHA_P1] = pd.Timestamp("2026-08-15")
+        for col in NUMERICAS_P1:
+            if col != "capacidad":
+                agosto[col] = agosto[col] + 15.0
+
+        # 2026-09: error alto (supera mae_referencia * (1 + TOLERANCIA_MAE_P1)) sin superar umbral de drift
+        septiembre = base_actual.copy()
+        septiembre[COLUMNA_FECHA_P1] = pd.Timestamp("2026-09-15")
+        septiembre["viajes"] = septiembre["viajes"] + 5.0
+
+        # 2026-10: drift y error alto simultáneos
+        octubre = base_actual.copy()
+        octubre[COLUMNA_FECHA_P1] = pd.Timestamp("2026-10-15")
+        for col in NUMERICAS_P1:
+            if col != "capacidad":
+                octubre[col] = octubre[col] + 25.0
+        octubre["viajes"] = octubre["viajes"] + 10.0
+
+        actual = pd.concat([agosto, septiembre, octubre], ignore_index=True)
 
         ruta_csv = tmp_path / "p1_por_mes.csv"
         ruta_png = tmp_path / "p1_por_mes.png"
         por_mes = evaluar_por_mes(actual, referencia, csv=ruta_csv, png=ruta_png)
 
         assert list(por_mes["mes"]) == ["2026-08", "2026-09", "2026-10"]
-        assert list(por_mes["reentrenar"]) == [False, False, True]
-        assert por_mes.loc[2, "drift_share"] >= 0.5
+        assert list(por_mes["alerta_drift"]) == [True, False, True]
+        assert list(por_mes["reentrenar"]) == [False, True, True]
+        assert por_mes.loc[0, "drift_share"] >= 0.5
+        assert por_mes.loc[1, "drift_share"] < 0.5
         assert por_mes.loc[2, "mae_champion"] > por_mes.loc[0, "mae_champion"]
         assert ruta_csv.exists() and ruta_png.exists()

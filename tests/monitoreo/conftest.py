@@ -1,5 +1,7 @@
 """Fixtures sintéticos para probar el monitoreo de drift de P1 sin MLflow ni datos de MiBici."""
 
+import mlflow
+from mlflow import MlflowClient
 import mlflow.pyfunc
 import numpy as np
 import pandas as pd
@@ -9,6 +11,7 @@ from mi_bici.config import (
     CATEGORICAS_P1,
     COLUMNA_FECHA_P1,
     COLUMNA_PREDICCION,
+    EXPERIMENT_NAME,
     NUMERICAS_P1,
     PERIODO_ACTUAL,
     PERIODO_REFERENCIA,
@@ -55,8 +58,21 @@ def modelo_falso(monkeypatch) -> ModeloDemandaFalso:
     """Sustituye la carga del champion en MLflow por `ModeloDemandaFalso` sin servidor."""
     modelo = ModeloDemandaFalso()
     monkeypatch.setattr(modulo_monitoreo, "conectar_mlflow", lambda *args, **kwargs: None)
-    monkeypatch.setattr(mlflow.pyfunc, "load_model", lambda *args, **kwargs: modelo)
+    monkeypatch.setattr("mlflow.pyfunc.load_model", lambda *args, **kwargs: modelo)
     return modelo
+
+
+@pytest.fixture
+def mlflow_temporal(tmp_path, monkeypatch) -> MlflowClient:
+    """Crea un servidor local temporal de MLflow con SQLite para verificar runs y artefactos."""
+    uri_previa = mlflow.get_tracking_uri()
+    uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+    monkeypatch.setattr(modulo_monitoreo, "TRACKING_URI", uri)
+    mlflow.set_tracking_uri(uri)
+    mlflow.create_experiment(EXPERIMENT_NAME, artifact_location=(tmp_path / "artefactos").as_uri())
+    mlflow.set_experiment(EXPERIMENT_NAME)
+    yield MlflowClient(tracking_uri=uri)
+    mlflow.set_tracking_uri(uri_previa)
 
 
 @pytest.fixture

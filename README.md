@@ -716,12 +716,13 @@ así:
 
 ### Disparador de reentrenamiento (CT) propuesto
 
-Cada mes, `make drift` compara el último mes con la referencia y aplica dos reglas de `config.py`:
+Cada mes, `make drift` compara el último mes con la referencia y `evaluar_por_mes` aplica dos reglas
+de `config.py`:
 
 | Regla | Condición | Para qué |
 |---|---|---|
-| Alerta de drift | `drift_share` del mes ≥ 0.5, es decir, al menos 4 de las 8 columnas con drift | Avisa que cambió la demanda. Se mide antes de tener los valores reales |
-| Reentrenar | MAE del champion en el mes > 1.15 × su MAE en la referencia (6.16 viajes en la corrida oficial) | Decide. El drift de las entradas no siempre sube el error, y el error puede subir sin drift |
+| `alerta_drift` | `drift_share >= UMBRAL_DRIFT_SHARE` (0.5), es decir, al menos 4 de las 8 columnas con drift | Alerta temprana: avisa que cambió la demanda. Se mide antes de tener los valores reales |
+| `reentrenar` | MAE del champion en el mes > `mae_referencia * (1 + TOLERANCIA_MAE_P1)`, con tolerancia de 15 % (6.16 viajes en la corrida oficial) | Decide. El drift no implica que el modelo falle: agosto tiene drift de 0.625 y el menor error (MAE 4.67), y septiembre no tiene drift pero el MAE sube a 6.42 |
 
 El 0.5 es el valor por defecto de `DataDriftPreset`. De las 8 columnas, 3 son de calendario o catálogo
 (`dia_semana`, `festivo` y `capacidad`) y pueden moverse sin que cambie el comportamiento. Con 0.5, la
@@ -739,7 +740,7 @@ Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno ne
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 298 pruebas de tests/
+make test            # las 303 pruebas de tests/
 make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt y requirements-api.txt

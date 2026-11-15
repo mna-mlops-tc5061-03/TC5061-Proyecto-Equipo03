@@ -1,5 +1,8 @@
+import subprocess
+
 import pytest
 
+from mi_bici.modeling import base
 from mi_bici.modeling.p2_riesgo import ExperimentoRiesgo
 from mi_bici.modeling.train import EXPERIMENTOS, leer_params
 
@@ -50,3 +53,47 @@ class TestTrainBase:
             candidato = EXPERIMENTOS[clave](modelo)
             candidato.modelo = candidato.crear_modelo()
             assert candidato.modelo_a_guardar() is candidato.modelo
+
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    """Crea un repositorio con código y un reporte versionados, y apunta `estado_git` a él."""
+    (tmp_path / "mi_bici").mkdir()
+    (tmp_path / "mi_bici" / "config.py").write_text("SEMILLA = 42\n", encoding="utf-8")
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "reporte.md").write_text("versión 1\n", encoding="utf-8")
+    identidad = ["-c", "user.name=Prueba", "-c", "user.email=prueba@example.com"]
+    for args in (
+        ["init", "-q"],
+        ["add", "."],
+        [*identidad, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "inicial"],
+    ):
+        subprocess.run(  # nosec B603 B607: comando y argumentos fijos, sin entrada externa
+            ["git", *args], cwd=tmp_path, check=True, capture_output=True
+        )
+    monkeypatch.setattr(base, "PROJ_ROOT", tmp_path)
+    return tmp_path
+
+
+class TestEstadoGit:
+    def test_repositorio_limpio(self, repo):
+        """Verifica que sin cambios el run queda limpio y con el commit actual."""
+        estado = base.estado_git()
+
+        assert estado["git_dirty"] == "False"
+        assert len(estado["git_commit"]) == 40
+
+    def test_salidas_en_reports_no_ensucian(self, repo):
+        """Verifica que un reporte nuevo y uno versionado que se regenera no marcan el run."""
+        (repo / "reports" / "evidently").mkdir()
+        (repo / "reports" / "evidently" / "p1_drift.csv").write_text("a\n", encoding="utf-8")
+        (repo / "reports" / "reporte.md").write_text("versión 2\n", encoding="utf-8")
+
+        assert base.estado_git()["git_dirty"] == "False"
+
+    @pytest.mark.parametrize("ruta", ["mi_bici/config.py", "mi_bici/nuevo.py", "reports.py"])
+    def test_cambios_fuera_de_reports_si_ensucian(self, repo, ruta):
+        """Verifica que el código cambiado o nuevo sí marca el run, aunque empiece con `reports`."""
+        (repo / ruta).write_text("SEMILLA = 7\n", encoding="utf-8")
+
+        assert base.estado_git()["git_dirty"] == "True"

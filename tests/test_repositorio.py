@@ -17,6 +17,12 @@ EXTENSIONES_PROHIBIDAS = (".db", ".sqlite", ".parquet", ".csv", ".pkl", ".joblib
 CARPETAS_PROHIBIDAS = ("mlruns", "mlartifacts")
 # Lo único de data/ y models/ que sí va a Git
 PERMITIDOS = {"data/manifest.json", "models/.gitkeep"}
+# Tablas de la corrida oficial (#141): métricas agregadas, sin filas de datos
+CSV_PERMITIDOS = {
+    "reports/evidently/p1_drift.csv",
+    "reports/evidently/p1_por_mes.csv",
+    "reports/ab_testing/p1_ab.csv",
+}
 
 # Rutas de ejemplo que el .gitignore debe ignorar y las que debe dejar pasar
 IGNORADAS = (
@@ -43,6 +49,8 @@ PATRONES_CREDENCIALES = {
     # Usuario y contraseña dentro de una URL, como podría quedar MLFLOW_TRACKING_URI
     "credenciales en URL": r"\b[a-z][a-z0-9+.\-]*://[^\s/:@'\"]+:[^\s/@'\"]+@",
 }
+# El JavaScript del reporte de Evidently trae `password:!0` (tipos de campo), que no es una clave
+EXCEPCIONES_CREDENCIALES = {"clave": {"reports/evidently/p1_drift.html"}}
 
 
 def git(*args: str) -> subprocess.CompletedProcess:
@@ -75,8 +83,8 @@ class TestArchivosVersionados:
 
     @pytest.mark.parametrize("extension", EXTENSIONES_PROHIBIDAS)
     def test_no_hay_datos_bases_ni_modelos(self, versionados, extension):
-        """Verifica que no se versionan datos, bases de MLflow ni modelos serializados."""
-        encontrados = [r for r in versionados if r.endswith(extension)]
+        """Verifica que no se versionan datos, bases de MLflow ni modelos, salvo las tablas."""
+        encontrados = [r for r in versionados if r.endswith(extension) and r not in CSV_PERMITIDOS]
         assert encontrados == []
 
     def test_no_hay_carpetas_de_mlflow(self, versionados):
@@ -117,10 +125,12 @@ class TestCredenciales:
     def test_ningun_archivo_trae_credenciales(self, versionados, nombre):
         """Verifica que ningún archivo de texto versionado tiene el patrón `nombre`."""
         patron = re.compile(PATRONES_CREDENCIALES[nombre])
+        excepciones = EXCEPCIONES_CREDENCIALES.get(nombre, set())
         encontrados = [
             ruta
             for ruta in versionados
-            if (PROJ_ROOT / ruta).is_file()
+            if ruta not in excepciones
+            and (PROJ_ROOT / ruta).is_file()
             and es_texto(ruta)
             and patron.search((PROJ_ROOT / ruta).read_text(encoding="utf-8", errors="ignore"))
         ]

@@ -670,8 +670,8 @@ ese es su criterio por defecto: una columna tiene drift si la distancia es de 0.
 |---|---|
 | `reports/evidently/p1_drift.html` | Reporte interactivo de Evidently: drift y distribución de cada variable |
 | `reports/evidently/p1_drift.csv` | Variable, método, distancia, umbral y si tiene drift |
-| `reports/evidently/p1_por_mes.csv` | Por mes: filas, `drift_share`, columnas con drift, MAE del champion y del baseline, y si se dispara el reentrenamiento |
-| `reports/evidently/p1_por_mes.png` | Gráfica de `drift_share` y del MAE por mes |
+| `reports/evidently/p1_por_mes.csv` | Por mes: filas, `drift_share`, columnas con drift, MAE del champion y del baseline, la alerta de drift y si se reentrena |
+| `reports/evidently/p1_por_mes.png` | Gráfica de `drift_share` por mes con la alerta, y del MAE con el límite para reentrenar |
 | `reports/ab_testing/p1_ab.csv` | MAE, RMSE y R² del champion, del challenger y del baseline en octubre |
 
 Los mismos archivos quedan como artefactos de sus runs en MLflow. El run del A/B guarda además
@@ -716,16 +716,20 @@ así:
 
 ### Disparador de reentrenamiento (CT) propuesto
 
-Cada mes, `make drift` compara el último mes con la referencia. **Se reentrena si `drift_share`
-es de 0.5 o más** (`UMBRAL_DRIFT_SHARE`), es decir, si al menos 4 de las 8 columnas tienen drift.
-Es el valor por defecto de `DataDriftPreset`. De las 8 columnas, 3 son de calendario o catálogo
-(`dia_semana`, `festivo` y `capacidad`) y pueden moverse sin que cambie el comportamiento (por
-ejemplo, un mes sin festivos o el cambio de nomenclatura de estaciones). Con 0.5, el
-reentrenamiento solo se dispara cuando se mueven las variables de demanda, el objetivo y la
-predicción.
+Cada mes, `make drift` compara el último mes con la referencia y aplica dos reglas de `config.py`:
 
-Cuando se dispara, el flujo es `make reentrenar` y luego `make ab-test`. El challenger solo entra
-a producción si gana el A/B. La justificación, con las cifras por mes, está en el reporte PDF.
+| Regla | Condición | Para qué |
+|---|---|---|
+| Alerta de drift | `drift_share` del mes ≥ 0.5, es decir, al menos 4 de las 8 columnas con drift | Avisa que cambió la demanda. Se mide antes de tener los valores reales |
+| Reentrenar | MAE del champion en el mes > 1.15 × su MAE en la referencia (6.16 viajes en la corrida oficial) | Decide. El drift de las entradas no siempre sube el error, y el error puede subir sin drift |
+
+El 0.5 es el valor por defecto de `DataDriftPreset`. De las 8 columnas, 3 son de calendario o catálogo
+(`dia_semana`, `festivo` y `capacidad`) y pueden moverse sin que cambie el comportamiento. Con 0.5, la
+alerta solo salta cuando se mueven las variables de demanda, el objetivo y la predicción. Las dos
+reglas quedan en las columnas `alerta_drift` y `reentrenar` de `reports/evidently/p1_por_mes.csv`.
+
+Cuando se dispara, el flujo es `make reentrenar` y luego `make ab-test`. El challenger solo entra a
+producción si gana el A/B. Las cifras por mes y la justificación están en el reporte PDF.
 
 **Referencia:** Huyen, C. (2022). *Designing machine learning systems*, cap. 8. O'Reilly Media.
 
@@ -927,7 +931,7 @@ Los cuatro jobs en verde en el PR [#125](https://github.com/mna-mlops-tc5061-03/
 | Pruebas y estilo | Pruebas unitarias en `tests/` y formato del código y de las pruebas revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
 | Datos validados | DeepChecks revisa la integridad de los datos y el drift entre entrenamiento y prueba con `make validar-datos` |
-| Monitoreo y reentrenamiento | Evidently mide el drift de P1 cada mes. Un modelo reentrenado entra a producción solo si gana un A/B con una regla fijada de antemano |
+| Monitoreo y reentrenamiento | Evidently mide el drift de P1 cada mes como alerta, y el reentrenamiento se decide con el MAE. Un modelo reentrenado entra a producción solo si gana un A/B con una regla fijada de antemano |
 | Chequeos de seguridad | `make security` corre bandit y pip-audit en cada PR, y `tests/test_repositorio.py` revisa que no se versionen secretos ni datos |
 | Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Validación en la API | Pydantic rechaza con 422 campos faltantes, extra o fuera de rango antes de llamar al modelo, y valida también la salida |

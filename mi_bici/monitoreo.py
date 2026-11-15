@@ -81,13 +81,6 @@ def conjuntos(modelo=None) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def _extraer_drift(snapshot) -> tuple[pd.DataFrame, float]:
     """Extrae de un `Snapshot` de Evidently la tabla de drift por variable y `drift_share`."""
-    detectado_por_columna = {}
-    for resultado, _ in getattr(snapshot.context, "_legacy_metrics", {}).values():
-        por_columna = getattr(resultado, "drift_by_columns", None)
-        if isinstance(por_columna, dict):
-            for col, info in por_columna.items():
-                detectado_por_columna[col] = bool(info.drift_detected)
-
     drift_share = 0.0
     filas = []
     for metrica in snapshot.dict().get("metrics", []):
@@ -100,10 +93,8 @@ def _extraer_drift(snapshot) -> tuple[pd.DataFrame, float]:
             metodo = str(cfg.get("method", ""))
             valor = float(metrica["value"])
             umbral = float(cfg["threshold"])
-            if variable in detectado_por_columna:
-                hay_drift = detectado_por_columna[variable]
-            else:
-                hay_drift = bool(valor < umbral if "p_value" in metodo else valor >= umbral)
+            # En p-values hay drift cuando valor < umbral; en distancias, cuando valor >= umbral
+            hay_drift = bool(valor < umbral if "p_value" in metodo else valor >= umbral)
             filas.append(
                 {
                     "variable": variable,
@@ -178,8 +169,6 @@ def registrar_monitoreo(
         "referencia_fin": PERIODO_REFERENCIA[1],
         "actual_inicio": PERIODO_ACTUAL[0],
         "actual_fin": PERIODO_ACTUAL[1],
-        "periodo_referencia": f"{PERIODO_REFERENCIA[0]}..{PERIODO_REFERENCIA[1]}",
-        "periodo_actual": f"{PERIODO_ACTUAL[0]}..{PERIODO_ACTUAL[1]}",
         "filas_referencia": len(referencia),
         "filas_actual": len(actual),
         "data_version": version_datos(),

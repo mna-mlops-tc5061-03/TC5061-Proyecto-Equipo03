@@ -232,12 +232,14 @@ NUMERICAS_P1 = [
     COLUMNA_PREDICCION,
 ]
 CATEGORICAS_P1 = ["dia_semana", "festivo"]
-# Disparador de reentrenamiento propuesto para P1: proporción de columnas con drift (50 %, valor
-# por defecto de DataDriftPreset en Evidently). De las 8 columnas monitoreadas, 3 son de calendario
-# o catálogo (dia_semana, festivo y capacidad), así que exigir >= 0.5 (al menos 4 de 8 columnas)
-# evita falsas alarmas por artefactos de calendario (ej. octubre sin festivos) o de nomenclatura
-# (#132) y solo se activa cuando cambian las variables de demanda, el objetivo y la predicción
+# Alerta temprana de drift para P1: proporción de columnas con drift (50 %, valor por defecto de
+# DataDriftPreset en Evidently). El drift por sí solo puede disparar cuando baja la demanda sin que
+# suba el error, o callar cuando el error ya creció; por eso se usa como alerta temprana mientras
+# llegan las etiquetas y se combina con la tolerancia de MAE para decidir el reentrenamiento.
 UMBRAL_DRIFT_SHARE = 0.5
+# Tolerancia de degradación del MAE del champion frente al MAE del periodo de referencia (15 %).
+# Cuando el MAE mensual supera `mae_referencia * (1 + TOLERANCIA_MAE_P1)` se recomienda reentrenar.
+TOLERANCIA_MAE_P1 = 0.15
 
 SEMILLA = 42
 

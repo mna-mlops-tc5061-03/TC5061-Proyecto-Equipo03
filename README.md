@@ -17,6 +17,7 @@ como API REST en un contenedor.
 | 2. MLflow Project y tracking avanzado | [Ejecución](#ejecución) y [Model Registry](#model-registry) |
 | 3. Pruebas y chequeos de seguridad | [Pruebas y chequeos](#pruebas-y-chequeos) |
 | 4. API REST en contenedor | [Despliegue de la API con Docker](#despliegue-de-la-api-con-docker) |
+| 5. Monitoreo, drift y A/B testing | [Monitoreo, drift y A/B testing](#monitoreo-drift-y-ab-testing) y `reports/TC5061_Drift_ABTest_Equipo03.pdf` |
 
 ## Preguntas
 
@@ -175,6 +176,9 @@ make validar-datos     # valida integridad y drift de los datos con DeepChecks
 make train             # registra el baseline y los candidatos de P1, P2 y P3 sin mlflow run
 make experimentos      # corre con mlflow run las 18 corridas de la entrega (usa el .env)
 make registry          # registra el mejor modelo de cada pregunta con el alias champion
+make drift             # reporte de drift de P1 con Evidently y evolución por mes
+make reentrenar        # reentrena el champion de P1 y lo registra como challenger
+make ab-test           # A/B offline de P1 entre champion y challenger
 make test              # corre las pruebas de tests/
 make test-fast         # corre las pruebas sin las lentas, que levantan MLflow
 make lint              # revisa el formato del código
@@ -617,13 +621,126 @@ sería la opción más simple.
 **Referencia:** Huyen, C. (2022). *Designing machine learning systems: An iterative process for
 production-ready applications*. O'Reilly Media.
 
+## Monitoreo, drift y A/B testing
+
+Esta sección es de la entrega 5 y solo trabaja con P1 (demanda por estación). La ingesta trae
+hasta octubre de 2026, pero los experimentos leen hasta `FECHA_FIN`. Así, los meses posteriores
+hacen de "producción": datos que el champion nunca vio.
+
+### Periodos y por qué
+
+Todos se definen en `mi_bici/config.py`:
+
+| Periodo | Fechas | Para qué |
+|---|---|---|
+| Referencia (`PERIODO_REFERENCIA`) | `FECHA_INICIO` (octubre de 2025) al 31 de julio de 2026 | Lo que vio el champion de P1 al entrenar (112,084 filas de estación y día) |
+| Actual (`PERIODO_ACTUAL`) | 1 de agosto al 31 de octubre de 2026 | Lo que llegó después, como si fuera producción (42,858 filas) |
+| Reentrenamiento | `FECHA_INICIO` al 30 de septiembre de 2026 | Ventana del challenger: la del champion más agosto y septiembre |
+| A/B (`CORTE_AB`) | 1 al 31 de octubre de 2026 | Un mes que ninguna de las dos versiones vio |
+
+Los periodos no se traslapan, y por eso el A/B es justo: ni el champion ni el challenger
+entrenaron con octubre. La demanda diaria se calcula una sola vez antes de separar los periodos,
+así que los rezagos del 1 de agosto salen de finales de julio.
+
+### Cómo se corre
+
+Con el [servidor de tracking](#servidor-de-tracking-de-mlflow) arriba, el `.env` cargado, los
+datos al día (`make data`) y el champion de P1 en el Registry (`make registry`):
+
+```bash
+make drift        # reporte de Evidently y evolución por mes, registrado en MLflow
+make reentrenar   # P1 reentrenado hasta el 30 de septiembre, registrado como challenger
+make ab-test      # A/B offline de octubre entre champion y challenger
+make ab-test ARGS=--promover   # lo mismo, y si la regla lo indica mueve los aliases
+```
+
+| Comando | Qué hace |
+|---|---|
+| `make drift` (`mi_bici/monitoreo.py`) | Agrega a cada fila la predicción del champion y corre `DataDriftPreset` y `DataSummaryPreset` de Evidently entre la referencia y el periodo actual. Después repite el drift mes por mes y calcula el MAE del champion y del baseline en cada mes. Todo queda en un run `P1-monitoreo` con `stage_of_work=monitoring` |
+| `make reentrenar` (`mi_bici/modeling/reentrenar.py`) | Copia el estimador del champion con los mismos hiperparámetros y lo ajusta con la ventana nueva. Lo registra como nueva versión con el alias `challenger`. El champion no se mueve |
+| `make ab-test` (`mi_bici/ab_testing.py`) | Las dos versiones predicen las mismas filas de octubre. Compara MAE, RMSE y R² con el baseline como referencia y aplica la regla de decisión. Todo queda en un run `P1-ab-test` con la decisión en la etiqueta `decision` |
+
+Evidently compara las variables numéricas con la distancia de Wasserstein normalizada y las
+categóricas (`dia_semana` y `festivo`) con la distancia de Jensen-Shannon. Con más de 1,000 filas,
+ese es su criterio por defecto: una columna tiene drift si la distancia es de 0.1 o más.
+
+### Dónde quedan los reportes
+
+| Archivo | Contenido |
+|---|---|
+| `reports/evidently/p1_drift.html` | Reporte interactivo de Evidently: drift y distribución de cada variable |
+| `reports/evidently/p1_drift.csv` | Variable, método, distancia, umbral y si tiene drift |
+| `reports/evidently/p1_por_mes.csv` | Por mes: filas, `drift_share`, columnas con drift, MAE del champion y del baseline, la alerta de drift y si se reentrena |
+| `reports/evidently/p1_por_mes.png` | Gráfica de `drift_share` por mes con la alerta, y del MAE con el límite para reentrenar |
+| `reports/ab_testing/p1_ab.csv` | MAE, RMSE y R² del champion, del challenger y del baseline en octubre |
+
+Los mismos archivos quedan como artefactos de sus runs en MLflow. El run del A/B guarda además
+`data/decision.json` con Δ, intervalo, p-valor y decisión. El reporte de la entrega, con las
+cifras de la corrida oficial, está en `reports/TC5061_Drift_ABTest_Equipo03.pdf`.
+
+### Regla de decisión del A/B
+
+La diferencia es MAE del champion menos MAE del challenger, así que es positiva cuando el
+challenger se equivoca menos. **El challenger se promueve solo si se cumplen las dos condiciones:**
+
+1. El límite inferior del intervalo bootstrap de 95 % de esa diferencia es mayor que 0. Son 2,000
+   réplicas que remuestrean estaciones completas.
+2. El Wilcoxon pareado sobre el MAE de cada estación da p < 0.05 (`ALFA_AB`).
+
+Las dos pruebas usan la estación como unidad y no la fila. Los días de una misma estación se
+parecen entre sí, y contarlos como observaciones independientes daría un intervalo más angosto y
+un p-valor más chico de lo que son. La salida también separa la diferencia en días hábiles y en
+fin de semana.
+
+`make ab-test` solo informa la decisión. Los aliases se mueven únicamente con `ARGS=--promover`:
+el challenger pasa a `champion` y la versión anterior queda como `challenger`, lista para
+regresar a ella. Como la API carga `@champion`, la nueva versión entra al reiniciar el
+contenedor, sin reconstruir la imagen.
+
+### A/B en línea con la API
+
+El A/B de arriba es offline: las dos versiones predicen un mes histórico. En producción se haría
+así:
+
+1. **Asignar estaciones al azar.** Al inicio de la prueba, cada estación se asigna a una versión
+   con una semilla fija, por ejemplo la mitad a cada una y estratificando por nivel de demanda.
+   La asignación se hace por estación y no por petición: así cada estación tiene siempre la misma
+   versión, y la unidad de análisis es la misma que en el A/B offline.
+2. **Servir las dos versiones.** La API carga `@champion` y `@challenger`. Según la estación de
+   cada fila, responde con una u otra y registra la versión, la predicción y la fecha.
+3. **Medir con los datos reales.** Los viajes de cada día se conocen al día siguiente. Se junta la
+   predicción con el valor real y se calcula el MAE por estación.
+4. **Decidir con la misma regla.** Tras un periodo fijado de antemano (por ejemplo, 4 semanas para
+   cubrir varios días de cada tipo), se aplican el intervalo bootstrap por estación y el Wilcoxon.
+   El periodo no se acorta aunque los resultados se vean claros antes.
+
+### Disparador de reentrenamiento (CT) propuesto
+
+Cada mes, `make drift` compara el último mes con la referencia y `evaluar_por_mes` aplica dos reglas
+de `config.py`:
+
+| Regla | Condición | Para qué |
+|---|---|---|
+| `alerta_drift` | `drift_share >= UMBRAL_DRIFT_SHARE` (0.5), es decir, al menos 4 de las 8 columnas con drift | Alerta temprana: avisa que cambió la demanda. Se mide antes de tener los valores reales |
+| `reentrenar` | MAE del champion en el mes > `mae_referencia * (1 + TOLERANCIA_MAE_P1)`, con tolerancia de 15 % (6.16 viajes en la corrida oficial) | Decide. El drift no implica que el modelo falle: agosto tiene drift de 0.625 y el menor error (MAE 4.67), y septiembre no tiene drift pero el MAE sube a 6.42 |
+
+El 0.5 es el valor por defecto de `DataDriftPreset`. De las 8 columnas, 3 son de calendario o catálogo
+(`dia_semana`, `festivo` y `capacidad`) y pueden moverse sin que cambie el comportamiento. Con 0.5, la
+alerta solo salta cuando se mueven las variables de demanda, el objetivo y la predicción. Las dos
+reglas quedan en las columnas `alerta_drift` y `reentrenar` de `reports/evidently/p1_por_mes.csv`.
+
+Cuando se dispara, el flujo es `make reentrenar` y luego `make ab-test`. El challenger solo entra a
+producción si gana el A/B. Las cifras por mes y la justificación están en el reporte PDF.
+
+**Referencia:** Huyen, C. (2022). *Designing machine learning systems*, cap. 8. O'Reilly Media.
+
 ## Pruebas y chequeos
 
 Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno necesita el servidor
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 236 pruebas de tests/
+make test            # las 303 pruebas de tests/
 make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt y requirements-api.txt
@@ -669,6 +786,9 @@ MiBici y todas corren en el CI.
 | `api/test_demanda.py` | `POST /predict/demanda`: lo mismo para P1, incluido el 422 por un campo de P2 y el 500 si el modelo predice viajes infinitos | 50 |
 | `api/test_salud.py` | `GET /health` con los dos modelos, sin ninguno y con solo uno, y que una pregunta siga respondiendo si la otra no cargó | 6 |
 | `api/test_esquemas.py` | Los esquemas de P1 y P2 tienen las variables de la firma del modelo y sus ejemplos son válidos | 4 |
+| `modeling/test_reentrenar.py` | El challenger es una versión nueva con los mismos hiperparámetros, sin filas de octubre, y el champion no se mueve | 2 |
+| `ab_testing/test_ab_testing.py` | Regla de decisión: se promueve un challenger claramente mejor y no uno idéntico o peor. El p-valor es por estación y no por fila, el intervalo bootstrap es reproducible y más ancho al remuestrear estaciones, y los aliases solo se mueven con `--promover` | 11 |
+| `monitoreo/test_drift.py` | Drift con Evidently sobre datos sintéticos: marca una variable numérica o categórica desplazada y no una idéntica. Los periodos no se traslapan, no entran columnas personales y la evaluación por mes detecta el mes con drift y mayor error | 11 |
 
 **Reproducibilidad.** `test_reproducibilidad.py` entrena dos veces con `SEMILLA` un candidato de
 cada pregunta (`hgb` de P1, `rf` de P2, y `kmeans` y `gmm` de P3) y compara las predicciones y las
@@ -812,6 +932,7 @@ Los cuatro jobs en verde en el PR [#125](https://github.com/mna-mlops-tc5061-03/
 | Pruebas y estilo | Pruebas unitarias en `tests/` y formato del código y de las pruebas revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
 | Datos validados | DeepChecks revisa la integridad de los datos y el drift entre entrenamiento y prueba con `make validar-datos` |
+| Monitoreo y reentrenamiento | Evidently mide el drift de P1 cada mes como alerta, y el reentrenamiento se decide con el MAE. Un modelo reentrenado entra a producción solo si gana un A/B con una regla fijada de antemano |
 | Chequeos de seguridad | `make security` corre bandit y pip-audit en cada PR, y `tests/test_repositorio.py` revisa que no se versionen secretos ni datos |
 | Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Validación en la API | Pydantic rechaza con 422 campos faltantes, extra o fuera de rango antes de llamar al modelo, y valida también la salida |
@@ -832,6 +953,8 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── plots.py             # gráficas que se registran como artefactos
 │   ├── seguimiento.py       # conexión con el servidor de tracking de MLflow
 │   ├── validacion.py        # validación de los datos con DeepChecks
+│   ├── monitoreo.py         # drift de P1 con Evidently y evolución mensual del drift y del MAE
+│   ├── ab_testing.py        # A/B offline de P1 entre champion y challenger y regla de decisión
 │   ├── api/
 │   │   ├── app.py           # API de FastAPI: /health, /predict/riesgo y /predict/demanda
 │   │   └── esquemas.py      # esquemas de Pydantic de entrada y salida, con ejemplos
@@ -842,16 +965,19 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │       ├── p2_riesgo.py     # P2: lo mismo para el riesgo por bloque
 │       ├── p3_grupos.py     # P3: lo mismo para los grupos de estaciones
 │       ├── registry.py      # lleva el mejor modelo de cada pregunta al Model Registry
+│       ├── reentrenar.py    # reentrena el champion de P1 y lo registra como challenger
 │       ├── search.py        # CLI de búsqueda de hiperparámetros con nested runs
 │       └── train.py         # CLI de entrenamiento: una pregunta y un modelo por run
 ├── data/                    # raw, interim, processed y external. No se versiona
 ├── models/                  # modelos serializados. No se versionan
 ├── notebooks/               # exploración, con la convención 1.0-iniciales-descripcion.ipynb
 ├── references/              # ML Canvas, diagramas y referencias
-├── reports/                 # reporte de la propuesta y figures/ (capturas por semana)
+├── reports/                 # reportes PDF de cada entrega y figures/ (capturas por semana)
+│   ├── evidently/           # reporte HTML de drift de P1, tablas CSV y gráfica por mes
+│   └── ab_testing/          # tabla del A/B de P1 (p1_ab.csv)
 ├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make test, make test-fast, make lint, make security, make api, make image, make container
+├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make drift, make reentrenar, make ab-test, make test, make test-fast, make lint, make security, make api, make image, make container
 ├── Dockerfile               # imagen de la API: dependencias de inferencia, código y usuario sin privilegios
 ├── .dockerignore            # deja fuera de la imagen los datos, MLflow, .env, pruebas y documentación
 ├── MLproject                # entradas ingest, train y search de MLflow

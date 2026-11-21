@@ -78,6 +78,7 @@ create_environment:
 
 ARGS ?=
 MOTOR ?= docker
+COMPOSE = $(if $(filter podman,$(MOTOR)),podman-compose,docker compose)
 IMAGE_NAME ?= mibici-api
 PORT ?= 8000
 
@@ -178,6 +179,19 @@ container:
 		$(if $(MODELO_URI),-e MODELO_URI=$(MODELO_URI)) \
 		$(if $(MODELO_URI_P1),-e MODELO_URI_P1=$(MODELO_URI_P1)) \
 		$(IMAGE_NAME)
+
+
+## Levanta MLflow y la API con Docker Compose y espera a que estén sanos (MOTOR=podman usa podman-compose)
+# --wait falla si la API queda sin modelos: la primera vez hay que llenar el Registry (ver README)
+.PHONY: sistema
+sistema:
+	$(COMPOSE) up -d --build --wait
+
+
+## Apaga el sistema sin borrar el Registry: el volumen de MLflow se conserva
+.PHONY: sistema-abajo
+sistema-abajo:
+	$(COMPOSE) down
 
 
 ## Make dataset

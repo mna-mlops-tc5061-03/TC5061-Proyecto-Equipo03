@@ -11,6 +11,7 @@
 mlflow.db
 mlruns/
 mlartifacts/
+mlflow_compose/
 
 # Modelos serializados: se registran en MLflow, no en Git
 /models/*

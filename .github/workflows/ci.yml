@@ -84,11 +84,13 @@ jobs:
 
   compose:
     # El sistema completo como lo levanta make sistema: MLflow y la API en su red, con la API
-    # esperando a que MLflow esté sano. Los modelos de prueba entran por docker-compose.ci.yml
+    # esperando a que MLflow esté sano. Los modelos de prueba se registran en ese MLflow con el
+    # alias champion, así la API los carga del Registry como en producción: esto prueba la red,
+    # el encabezado Host (--allowed-hosts), el proxy de artefactos y la resolución del alias
     name: compose
     runs-on: ubuntu-latest
-    env:
-      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+    # El peor caso ronda los 6 minutos (start_period de MLflow); sin límite GitHub espera 6 horas
+    timeout-minutes: 15
 
     steps:
       - name: Checkout del código
@@ -97,20 +99,27 @@ jobs:
       - name: Construir la imagen de la API con Compose
         run: docker compose build api
 
-      - name: Generar los modelos de prueba
+      - name: Levantar MLflow y esperar a que esté sano
+        run: docker compose up -d --wait mlflow
+
+      - name: Registrar los modelos de prueba en ese MLflow con el alias champion
         run: |
           mkdir -p /tmp/prueba && chmod 777 /tmp/prueba
-          docker run --rm -v /tmp/prueba:/tmp/prueba -v "$PWD/tests/ci:/ci:ro" mibici-api \
-            python /ci/modelos_prueba.py /tmp/prueba
+          # Sin git en la imagen, MLflow avisa que no puede leer el commit: no hace falta aquí
+          docker compose run --rm --no-deps -e GIT_PYTHON_REFRESH=quiet \
+            -v "$PWD/tests/ci:/ci:ro" -v /tmp/prueba:/tmp/prueba \
+            api python /ci/modelos_prueba.py /tmp/prueba --registrar
 
-      - name: Levantar MLflow y la API y esperar a que estén sanos
-        run: docker compose up -d --wait
+      - name: Levantar la API, que carga los modelos del Registry
+        run: docker compose up -d --wait api
 
       - name: Verificar MLflow, /health y cada /predict
         run: |
           docker compose ps
           curl -fsS http://127.0.0.1:5000/health
-          curl -fsS http://127.0.0.1:8000/health | grep -q '"estado":"ok"'
+          curl -fsS http://127.0.0.1:8000/health | tee /tmp/salud.json
+          grep -q '"estado":"ok"' /tmp/salud.json
+          grep -q '"alias":"champion"' /tmp/salud.json
           curl -fsS -X POST http://127.0.0.1:8000/predict/riesgo \
             -H "Content-Type: application/json" \
             -d @/tmp/prueba/solicitud.json | grep -q '"predicciones":'

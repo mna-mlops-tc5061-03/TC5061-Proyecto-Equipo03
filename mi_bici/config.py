@@ -292,6 +292,12 @@ ESPERA_CARGA = (0.5, 1.5)
 # Observaciones de una petición por lote: las 470 estaciones con viajes en octubre de 2026, como
 # la corrida diaria de P1 o la de un bloque de P2
 LOTE_CARGA = 470
+# Resultados de make carga: los de Locust y los de CPU y memoria de los contenedores
+CARGA_DIR = REPORTS_DIR / "carga"
+# Proyecto de Compose cuyos contenedores se miden (name: en docker-compose.yml)
+PROYECTO_COMPOSE = os.getenv("COMPOSE_PROJECT_NAME", "mibici")
+# Segundos mínimos entre muestras; docker stats --no-stream ya tarda unos 2 s en medir el CPU
+INTERVALO_RECURSOS = 1.0
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135

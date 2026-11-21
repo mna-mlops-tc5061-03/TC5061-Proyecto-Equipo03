@@ -57,6 +57,9 @@ services:
       MODELO_URI_P1:
     ports:
       - "127.0.0.1:${API_PUERTO:-8000}:8000"
+    # CPU y memoria de la instancia de referencia del análisis FinOps. Se cambian en el .env
+    cpus: ${API_CPUS:-2}
+    mem_limit: ${API_MEMORIA:-4g}
     networks:
       - mibici
     depends_on:

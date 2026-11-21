@@ -1,0 +1,12 @@
+# Override para el CI: la API carga modelos de prueba de una carpeta en lugar del Registry, así el
+# sistema se puede levantar completo sin datos ni modelos reales. MLflow se levanta igual, vacío.
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --wait
+# Los modelos los genera tests/ci/modelos_prueba.py en MODELOS_PRUEBA (por defecto /tmp/prueba).
+services:
+  api:
+    environment:
+      MODELO_URI: /tmp/modelo
+      MODELO_URI_P1: /tmp/modelo_p1
+    volumes:
+      - ${MODELOS_PRUEBA:-/tmp/prueba}/modelo:/tmp/modelo:ro
+      - ${MODELOS_PRUEBA:-/tmp/prueba}/modelo_p1:/tmp/modelo_p1:ro

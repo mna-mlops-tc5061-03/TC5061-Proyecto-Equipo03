@@ -53,39 +53,9 @@ jobs:
       - name: Levantar el contenedor con modelos de prueba y verificar /health y cada /predict
         run: |
           mkdir -p /tmp/prueba && chmod 777 /tmp/prueba
-          docker run --rm -v /tmp/prueba:/tmp/prueba mibici-api python -c "
-          import json
-          from pathlib import Path
-          import mlflow.sklearn
-          from mlflow.models import infer_signature
-          import pandas as pd
-          from sklearn.frozen import FrozenEstimator
-          from sklearn.linear_model import LinearRegression, LogisticRegression
-          from sklearn.model_selection import FixedThresholdClassifier
-          from mi_bici.api.esquemas import EJEMPLO_P1, EJEMPLO_P2
-          from mi_bici.config import VARIABLES_P1, VARIABLES_P2
-
-          # P2. Mismos tipos que la firma real de flujo_por_bloque (int32 en hora/dia_semana, int64 en festivo)
-          X = pd.DataFrame(EJEMPLO_P2)[VARIABLES_P2].astype(
-              {'hora': 'int32', 'dia_semana': 'int32', 'festivo': 'int64'}
-          )
-          clf = LogisticRegression().fit(X, [0, 0, 1])
-          modelo = FixedThresholdClassifier(
-              FrozenEstimator(clf), threshold=0.5, response_method='predict_proba'
-          )
-          mlflow.sklearn.save_model(
-              modelo, '/tmp/prueba/modelo', signature=infer_signature(X, modelo.predict(X))
-          )
-          Path('/tmp/prueba/solicitud.json').write_text(json.dumps({'observaciones': EJEMPLO_P2}))
-
-          # P1. Un regresor chico con las variables de VARIABLES_P1
-          X1 = pd.DataFrame(EJEMPLO_P1)[VARIABLES_P1].astype({'dia_semana': 'int32', 'festivo': 'int64'})
-          reg = LinearRegression().fit(X1, X1['viajes_media_7'])
-          mlflow.sklearn.save_model(
-              reg, '/tmp/prueba/modelo_p1', signature=infer_signature(X1, reg.predict(X1))
-          )
-          Path('/tmp/prueba/solicitud_p1.json').write_text(json.dumps({'observaciones': EJEMPLO_P1}))
-          "
+          # Los modelos y las solicitudes de prueba se generan con la imagen, que ya trae MLflow
+          docker run --rm -v /tmp/prueba:/tmp/prueba -v "$PWD/tests/ci:/ci:ro" mibici-api \
+            python /ci/modelos_prueba.py /tmp/prueba
           docker run -d --name mibici-api-test -p 8000:8000 \
             -v /tmp/prueba/modelo:/tmp/modelo:ro \
             -v /tmp/prueba/modelo_p1:/tmp/modelo_p1:ro \
@@ -111,3 +81,47 @@ jobs:
           docker logs mibici-api-test
           docker rm -f mibici-api-test
           exit 1
+
+  compose:
+    # El sistema completo como lo levanta make sistema: MLflow y la API en su red, con la API
+    # esperando a que MLflow esté sano. Los modelos de prueba entran por docker-compose.ci.yml
+    name: compose
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v5
+
+      - name: Construir la imagen de la API con Compose
+        run: docker compose build api
+
+      - name: Generar los modelos de prueba
+        run: |
+          mkdir -p /tmp/prueba && chmod 777 /tmp/prueba
+          docker run --rm -v /tmp/prueba:/tmp/prueba -v "$PWD/tests/ci:/ci:ro" mibici-api \
+            python /ci/modelos_prueba.py /tmp/prueba
+
+      - name: Levantar MLflow y la API y esperar a que estén sanos
+        run: docker compose up -d --wait
+
+      - name: Verificar MLflow, /health y cada /predict
+        run: |
+          docker compose ps
+          curl -fsS http://127.0.0.1:5000/health
+          curl -fsS http://127.0.0.1:8000/health | grep -q '"estado":"ok"'
+          curl -fsS -X POST http://127.0.0.1:8000/predict/riesgo \
+            -H "Content-Type: application/json" \
+            -d @/tmp/prueba/solicitud.json | grep -q '"predicciones":'
+          curl -fsS -X POST http://127.0.0.1:8000/predict/demanda \
+            -H "Content-Type: application/json" \
+            -d @/tmp/prueba/solicitud_p1.json | grep -q '"predicciones":'
+
+      - name: Logs de los servicios si algo falló
+        if: failure()
+        run: docker compose logs
+
+      - name: Apagar el sistema y borrar su volumen
+        if: always()
+        run: docker compose down -v

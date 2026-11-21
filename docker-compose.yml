@@ -9,7 +9,9 @@ services:
     image: ghcr.io/mlflow/mlflow:v3.17.2
     # mlflow.db y mlartifacts/ quedan juntos en /mlflow, como en el paquete del Registry del equipo.
     # MLflow 3 rechaza las peticiones cuyo Host no reconoce: se permite el nombre del servicio, que
-    # es como lo llama la API dentro de la red, y localhost para usarlo desde la máquina
+    # es como lo llama la API dentro de la red, y localhost para usarlo desde la máquina.
+    # Se publica en 5001 y no en 5000, que en macOS ocupa AirPlay; así el MLFLOW_TRACKING_URI del
+    # .env.example (127.0.0.1:5001) apunta a este servidor y make experimentos registry lo llena
     command:
       - mlflow
       - server
@@ -17,13 +19,13 @@ services:
       - --port=5000
       - --backend-store-uri=sqlite:////mlflow/mlflow.db
       - --artifacts-destination=/mlflow/mlartifacts
-      - --allowed-hosts=mlflow:5000,localhost:${MLFLOW_PUERTO:-5000},127.0.0.1:${MLFLOW_PUERTO:-5000}
+      - --allowed-hosts=mlflow:5000,localhost:${MLFLOW_PUERTO:-5001},127.0.0.1:${MLFLOW_PUERTO:-5001}
     volumes:
       # Por defecto un volumen de Docker. Con MLFLOW_DATOS=<carpeta> se usa un Registry existente
       - ${MLFLOW_DATOS:-mlflow-datos}:/mlflow
     ports:
       # Solo en 127.0.0.1, para que el servidor no quede abierto a la red local
-      - "127.0.0.1:${MLFLOW_PUERTO:-5000}:5000"
+      - "127.0.0.1:${MLFLOW_PUERTO:-5001}:5000"
     networks:
       - mibici
     healthcheck:
@@ -49,6 +51,10 @@ services:
       # Dentro de la red, MLflow se llama por el nombre del servicio. Se fija aquí y no se toma del
       # .env, que apunta al servidor de la máquina (127.0.0.1) para correr los experimentos
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      # Opcionales: si están en el .env o en la terminal se pasan, por ejemplo para servir otra
+      # versión. Si no, no se definen y la API usa el champion de config.py
+      MODELO_URI:
+      MODELO_URI_P1:
     ports:
       - "127.0.0.1:${API_PUERTO:-8000}:8000"
     networks:

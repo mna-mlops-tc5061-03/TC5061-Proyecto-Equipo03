@@ -116,7 +116,7 @@ jobs:
       - name: Verificar MLflow, /health y cada /predict
         run: |
           docker compose ps
-          curl -fsS http://127.0.0.1:5000/health
+          curl -fsS http://127.0.0.1:5001/health
           curl -fsS http://127.0.0.1:8000/health | tee /tmp/salud.json
           grep -q '"estado":"ok"' /tmp/salud.json
           grep -q '"alias":"champion"' /tmp/salud.json

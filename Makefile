@@ -81,6 +81,8 @@ MOTOR ?= docker
 COMPOSE = $(if $(filter podman,$(MOTOR)),podman-compose,docker compose)
 IMAGE_NAME ?= mibici-api
 PORT ?= 8000
+# Hilos de OpenMP de make api, igual que el contenedor; con más, las peticiones se pelean los núcleos
+HILOS_OPENMP ?= 1
 
 # mlflow run le pasa a cada corrida la URI de la terminal, así que se toma la del .env
 -include .env
@@ -168,10 +170,10 @@ carga:
 		--csv reports/carga/locust --csv-full-history --html reports/carga/locust.html
 
 
-## Levanta la API localmente con uvicorn
+## Levanta la API localmente con uvicorn (un hilo de OpenMP; HILOS_OPENMP=<n> para comparar)
 .PHONY: api
 api:
-	uvicorn mi_bici.api.app:app --host 127.0.0.1 --port $(PORT)
+	OMP_NUM_THREADS=$(HILOS_OPENMP) uvicorn mi_bici.api.app:app --host 127.0.0.1 --port $(PORT)
 
 
 ## Construye la imagen de la API (usa MOTOR=podman para Podman)

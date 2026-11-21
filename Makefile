@@ -160,14 +160,18 @@ drift:
 	$(PYTHON_INTERPRETER) -m mi_bici.monitoreo
 
 
-## Prueba de carga con Locust contra la API (levántala antes con make sistema o make api)
+## Prueba de carga con Locust contra la API, midiendo CPU y memoria de los contenedores
 # Sin interfaz: termina sola al acabar los escalones de ESCALONES_CARGA y deja los CSV y el HTML
 # en reports/carga/. La API se toma de HOST_CARGA (por defecto, http://127.0.0.1:8000)
+# El muestreo de recursos corre en segundo plano y se detiene al terminar Locust, aunque falle
 .PHONY: carga
 carga:
 	mkdir -p reports/carga
+	$(PYTHON_INTERPRETER) -m mi_bici.carga.recursos --motor $(MOTOR) & MUESTREO=$$!; \
+	trap 'kill $$MUESTREO 2>/dev/null' EXIT INT TERM; \
 	locust -f mi_bici/carga/locustfile.py --headless --only-summary \
-		--csv reports/carga/locust --csv-full-history --html reports/carga/locust.html
+		--csv reports/carga/locust --csv-full-history --html reports/carga/locust.html; \
+	ESTADO=$$?; kill $$MUESTREO 2>/dev/null; wait $$MUESTREO; exit $$ESTADO
 
 
 ## Levanta la API localmente con uvicorn (un hilo de OpenMP; HILOS_OPENMP=<n> para comparar)

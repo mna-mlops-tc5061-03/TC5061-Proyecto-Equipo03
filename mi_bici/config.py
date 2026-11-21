@@ -280,6 +280,19 @@ MAX_OBSERVACIONES = 1000
 # para estaciones nuevas y evita que un número enorme se desborde al convertirlo a int64
 CAPACIDAD_MAXIMA = 100
 
+# Pruebas de carga con Locust (entrega 6). La API se prueba donde la levanta make sistema o make api
+HOST_CARGA = os.getenv("HOST_CARGA", "http://127.0.0.1:8000")
+# Escalones de la prueba: (usuarios simultáneos, segundos). Cada usuario hace en promedio una
+# petición por segundo, así que el RPS sigue a los usuarios hasta que la API se satura
+ESCALONES_CARGA = [(10, 60), (50, 60), (100, 60), (200, 60)]
+# Usuarios que arrancan por segundo al subir de escalón
+ARRANQUE_CARGA = 10
+# Segundos que espera cada usuario entre peticiones (en promedio, 1)
+ESPERA_CARGA = (0.5, 1.5)
+# Observaciones de una petición por lote: las 470 estaciones con viajes en octubre de 2026, como
+# la corrida diaria de P1 o la de un bloque de P2
+LOTE_CARGA = 470
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:

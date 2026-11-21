@@ -294,10 +294,26 @@ ESPERA_CARGA = (0.5, 1.5)
 LOTE_CARGA = 470
 # Resultados de make carga: los de Locust y los de CPU y memoria de los contenedores
 CARGA_DIR = REPORTS_DIR / "carga"
+# Figuras de desempeño de carga y recursos (entrega 6 / semana 10)
+FIGURAS_SEMANA10_DIR = FIGURES_DIR / "semana10"
 # Proyecto de Compose cuyos contenedores se miden (name: en docker-compose.yml)
 PROYECTO_COMPOSE = os.getenv("COMPOSE_PROJECT_NAME", "mibici")
 # Segundos mínimos entre muestras; docker stats --no-stream ya tarda unos 2 s en medir el CPU
 INTERVALO_RECURSOS = 1.0
+
+# FinOps y objetivos de servicio (entrega 6).
+# Instancia de referencia equivalente a los límites de docker-compose.yml (2 vCPU, 4 GiB RAM).
+# Precio Linux On-Demand en us-east-1 (N. Virginia): $0.0416 USD/hora.
+# Fuente: https://aws.amazon.com/ec2/pricing/on-demand/ (consultado el 2026-11-21)
+INSTANCIA_REFERENCIA = "AWS EC2 t3.medium (2 vCPU, 4 GiB, us-east-1, On-Demand)"
+PRECIO_HORA_USD = 0.0416
+# Objetivos de servicio (SLO) para definir el RPS sostenible: p95 <= 500 ms y <= 1 % de errores
+LATENCIA_OBJETIVO_MS = 500.0
+TASA_ERROR_MAX = 0.01
+# Mes comercial de 30 días (720 horas) y ventana de pico de 60 s para el cálculo de escalabilidad
+DIAS_MES = 30
+HORAS_MES = DIAS_MES * 24
+VENTANA_PICO_SEG = 60
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135

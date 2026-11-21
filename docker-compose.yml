@@ -33,12 +33,12 @@ services:
         - python
         - -c
         - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')
-      # La primera vez crea las tablas del Registry, que en un disco lento tarda minutos.
+      # La primera vez crea las tablas del Registry, que en un disco lento tardó 3 minutos.
       # Durante start_period los fallos no cuentan, y en cuanto responde queda sano
       interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 120s
+      start_period: 300s
       start_interval: 2s
     restart: unless-stopped
 

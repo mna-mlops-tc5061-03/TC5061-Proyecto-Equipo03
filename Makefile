@@ -158,6 +158,16 @@ drift:
 	$(PYTHON_INTERPRETER) -m mi_bici.monitoreo
 
 
+## Prueba de carga con Locust contra la API (levántala antes con make sistema o make api)
+# Sin interfaz: termina sola al acabar los escalones de ESCALONES_CARGA y deja los CSV y el HTML
+# en reports/carga/. La API se toma de HOST_CARGA (por defecto, http://127.0.0.1:8000)
+.PHONY: carga
+carga:
+	mkdir -p reports/carga
+	locust -f mi_bici/carga/locustfile.py --headless --only-summary \
+		--csv reports/carga/locust --csv-full-history --html reports/carga/locust.html
+
+
 ## Levanta la API localmente con uvicorn
 .PHONY: api
 api:

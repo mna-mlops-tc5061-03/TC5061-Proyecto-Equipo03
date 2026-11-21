@@ -1,0 +1,73 @@
+# Sistema de MiBici: el servidor de MLflow con el Model Registry y la API que sirve sus modelos.
+# Se levanta con `make sistema` (docker compose up -d --build --wait) y se apaga con `make sistema-abajo`.
+# Los puertos y la carpeta del Registry se cambian en el .env (ver .env.example).
+name: mibici
+
+services:
+  mlflow:
+    # Misma versión de MLflow que requirements.txt, para que el Registry y la API hablen igual
+    image: ghcr.io/mlflow/mlflow:v3.17.2
+    # mlflow.db y mlartifacts/ quedan juntos en /mlflow, como en el paquete del Registry del equipo.
+    # MLflow 3 rechaza las peticiones cuyo Host no reconoce: se permite el nombre del servicio, que
+    # es como lo llama la API dentro de la red, y localhost para usarlo desde la máquina.
+    # Se publica en 5001 y no en 5000, que en macOS ocupa AirPlay; así el MLFLOW_TRACKING_URI del
+    # .env.example (127.0.0.1:5001) apunta a este servidor y make experimentos registry lo llena
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/mlartifacts
+      - --allowed-hosts=mlflow:5000,localhost:${MLFLOW_PUERTO:-5001},127.0.0.1:${MLFLOW_PUERTO:-5001}
+    volumes:
+      # Por defecto un volumen de Docker. Con MLFLOW_DATOS=<carpeta> se usa un Registry existente
+      - ${MLFLOW_DATOS:-mlflow-datos}:/mlflow
+    ports:
+      # Solo en 127.0.0.1, para que el servidor no quede abierto a la red local
+      - "127.0.0.1:${MLFLOW_PUERTO:-5001}:5000"
+    networks:
+      - mibici
+    healthcheck:
+      # La imagen no trae curl ni wget, pero sí Python
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')
+      # La primera vez crea las tablas del Registry, que en un disco lento tardó 3 minutos.
+      # Durante start_period los fallos no cuentan, y en cuanto responde queda sano
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
+      start_interval: 2s
+    restart: unless-stopped
+
+  api:
+    build: .
+    image: mibici-api
+    environment:
+      # Dentro de la red, MLflow se llama por el nombre del servicio. Se fija aquí y no se toma del
+      # .env, que apunta al servidor de la máquina (127.0.0.1) para correr los experimentos
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      # Opcionales: si están en el .env o en la terminal se pasan, por ejemplo para servir otra
+      # versión. Si no, no se definen y la API usa el champion de config.py
+      MODELO_URI:
+      MODELO_URI_P1:
+    ports:
+      - "127.0.0.1:${API_PUERTO:-8000}:8000"
+    networks:
+      - mibici
+    depends_on:
+      # La API carga los modelos solo al arrancar: si MLflow todavía no responde, se quedaría en 503
+      mlflow:
+        condition: service_healthy
+    # El healthcheck es el del Dockerfile: /health responde 200 solo con los modelos cargados
+    restart: unless-stopped
+
+networks:
+  mibici:
+
+volumes:
+  mlflow-datos:

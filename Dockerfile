@@ -25,6 +25,9 @@ USER appuser
 ENV MLFLOW_HTTP_REQUEST_MAX_RETRIES=2 \
     MLFLOW_HTTP_REQUEST_TIMEOUT=10
 
+# Un hilo de OpenMP por predicción, para que las peticiones simultáneas no se peleen los núcleos (#172)
+ENV OMP_NUM_THREADS=1
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

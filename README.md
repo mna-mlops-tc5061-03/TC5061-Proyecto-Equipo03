@@ -762,7 +762,7 @@ Registry con cada merge a `main`.
 | Costo por inferencia y gráficas | `mi_bici/carga/finops.py` y `make finops` | [#181](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/181) |
 | Pruebas de carga, recursos y costo | `tests/carga/` | [#182](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/182) |
 | Corrida oficial | `reports/carga/` y `reports/figures/semana10/` | [#183](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/183) |
-| Instrucciones y reporte | Esta sección y `reports/TC5061_Operacion_FinOps_Equipo03.pdf` | <!-- TODO(#168): números de tus PR del README y del reporte --> |
+| Instrucciones y reporte | Esta sección y `reports/TC5061_Operacion_FinOps_Equipo03.pdf` | [#184](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/184), [#185](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/185) |
 
 ```mermaid
 flowchart LR
@@ -1230,9 +1230,11 @@ def metricas_regresion(y, pred) -> dict:
 
 ## Integrantes
 
-| Integrante | Matrícula 
+| Integrante | Matrícula | Rol en la propuesta |
 |---|---|---|
-| Anaí Lael Barrera Magaña | A01797380 
-| Gerardo González Martínez | A01840096 
-| Miguel Ángel Ramírez Castillo | A01840045 
-| Sebastián Estrada García | A00805402 
+| Anaí Lael Barrera Magaña | A01797380 | Exploración de datos y README |
+| Gerardo González Martínez | A01840096 | Configuración, registro común en MLflow, variables y experimento base |
+| Miguel Ángel Ramírez Castillo | A01840045 | Ingesta reproducible y administración del repositorio |
+| Sebastián Estrada García | A00805402 | ML Canvas, diagramas, referencias, evidencia de MLflow y documento de la propuesta |
+
+

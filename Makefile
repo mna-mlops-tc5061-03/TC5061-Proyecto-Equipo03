@@ -174,6 +174,12 @@ carga:
 	ESTADO=$$?; kill $$MUESTREO 2>/dev/null; wait $$MUESTREO; exit $$ESTADO
 
 
+## Analiza la prueba de carga: métricas por escalón, costo por inferencia y gráficas FinOps
+.PHONY: finops
+finops:
+	$(PYTHON_INTERPRETER) -m mi_bici.carga.finops
+
+
 ## Levanta la API localmente con uvicorn (un hilo de OpenMP; HILOS_OPENMP=<n> para comparar)
 .PHONY: api
 api:

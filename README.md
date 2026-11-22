@@ -912,7 +912,7 @@ de MLflow ni el `.env`:
 
 ```bash
 make test            # las 328 pruebas de tests/
-make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
+make test-fast       # las mismas sin las 10 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt y requirements-api.txt
 make lint            # formato y estilo con ruff, también de tests/

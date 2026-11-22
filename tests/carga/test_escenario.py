@@ -120,8 +120,9 @@ print(json.dumps({"tiempos": tiempos, "fin": fin, "enviados": enviados}))
             cwd=PROJ_ROOT,
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
+        assert resultado.returncode == 0, resultado.stderr
         salida = json.loads(resultado.stdout.strip().splitlines()[-1])
 
         esperados = []

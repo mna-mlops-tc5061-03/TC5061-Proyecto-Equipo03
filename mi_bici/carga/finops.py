@@ -1,14 +1,16 @@
 """Análisis de desempeño de la prueba de carga y costo por inferencia (FinOps).
 
-Lee las salidas de `make carga` (`reports/carga/locust_stats_history.csv` y
-`reports/carga/recursos.csv`), resume cada escalón de `ESCALONES_CARGA`, calcula el RPS sostenible
-que cumple `LATENCIA_OBJETIVO_MS` y `TASA_ERROR_MAX`, estima el costo por inferencia (y por 1,000)
-para peticiones de una estación y de lote, evalúa la escalabilidad frente a la demanda real de
-MiBici y genera las gráficas en `reports/figures/semana10/`.
+Lee las salidas de `make carga` (`reports/carga/locust_stats_history.csv`,
+`reports/carga/recursos.csv` y `reports/carga/maquina.json`), resume cada escalón usando las filas
+en meseta (`User Count == usuarios`), calcula el RPS sostenible que cumple `LATENCIA_OBJETIVO_MS`
+y `TASA_ERROR_MAX`, estima el costo por petición y por predicción (mezcla real y cotas superiores
+de una estación y de lote), evalúa la escalabilidad frente a la demanda real de MiBici y genera
+las gráficas en `reports/figures/semana10/`.
 
     make finops
 """
 
+import json
 import math
 from pathlib import Path
 from typing import Annotated
@@ -38,6 +40,7 @@ from mi_bici.config import (
 
 HISTORIA_CSV = CARGA_DIR / "locust_stats_history.csv"
 RECURSOS_CSV = CARGA_DIR / "recursos.csv"
+MAQUINA_JSON = CARGA_DIR / "maquina.json"
 FINOPS_CSV = CARGA_DIR / "finops.csv"
 ESCALONES_CSV = CARGA_DIR / "escalones.csv"
 
@@ -59,26 +62,28 @@ def _serie_por_modo(historia: pd.DataFrame, modo: str) -> pd.DataFrame:
     """Filtra y agrega `locust_stats_history.csv` por segundo para un modo de petición.
 
     Modos soportados:
-    - `"agregado"`: fila `Aggregated` de Locust (todas las rutas combinadas).
+    - `"por_peticion"` (o `"agregado"`): fila `Aggregated` de Locust (todas las rutas).
     - `"una_estacion"`: endpoints terminados en `"[1]"` (1 predicción por petición).
     - `"lote"`: endpoints terminados en `f"[{LOTE_CARGA}]"` (`LOTE_CARGA` predicciones por petición).
     """
-    if modo == "agregado":
+    tiene_usuarios = "User Count" in historia.columns
+
+    if modo in ("por_peticion", "agregado"):
         sub = historia[historia["Name"] == "Aggregated"].copy()
         if sub.empty:
             return pd.DataFrame()
-        df = pd.DataFrame(
-            {
-                "Timestamp": _a_numerico(sub["Timestamp"]),
-                "rps": _a_numerico(sub["Requests/s"]).fillna(0.0),
-                "fallos_s": _a_numerico(sub["Failures/s"]).fillna(0.0),
-                "p50_ms": _a_numerico(sub["50%"]),
-                "p95_ms": _a_numerico(sub["95%"]),
-                "total_req": _a_numerico(sub["Total Request Count"]).fillna(0.0),
-                "total_fail": _a_numerico(sub["Total Failure Count"]).fillna(0.0),
-            }
-        )
-        return df.sort_values("Timestamp").reset_index(drop=True)
+        datos = {
+            "Timestamp": _a_numerico(sub["Timestamp"]),
+            "rps": _a_numerico(sub["Requests/s"]).fillna(0.0),
+            "fallos_s": _a_numerico(sub["Failures/s"]).fillna(0.0),
+            "p50_ms": _a_numerico(sub["50%"]),
+            "p95_ms": _a_numerico(sub["95%"]),
+            "total_req": _a_numerico(sub["Total Request Count"]).fillna(0.0),
+            "total_fail": _a_numerico(sub["Total Failure Count"]).fillna(0.0),
+        }
+        if tiene_usuarios:
+            datos["user_count"] = _a_numerico(sub["User Count"])
+        return pd.DataFrame(datos).sort_values("Timestamp").reset_index(drop=True)
 
     sufijo = "[1]" if modo == "una_estacion" else f"[{LOTE_CARGA}]"
     sub = historia[historia["Name"].astype(str).str.endswith(sufijo)].copy()
@@ -92,28 +97,33 @@ def _serie_por_modo(historia: pd.DataFrame, modo: str) -> pd.DataFrame:
     sub["p95_ms"] = _a_numerico(sub["95%"])
     sub["total_req"] = _a_numerico(sub["Total Request Count"]).fillna(0.0)
     sub["total_fail"] = _a_numerico(sub["Total Failure Count"]).fillna(0.0)
+    if tiene_usuarios:
+        sub["user_count"] = _a_numerico(sub["User Count"])
 
     # Por marca de tiempo: los RPS y conteos se suman entre P1 y P2; en p95 se toma el máximo
     # para exigir que las dos preguntas cumplan la latencia objetivo
-    agrupado = (
+    agregaciones: dict[str, tuple[str, str]] = {
+        "rps": ("rps", "sum"),
+        "fallos_s": ("fallos_s", "sum"),
+        "p50_ms": ("p50_ms", "median"),
+        "p95_ms": ("p95_ms", "max"),
+        "total_req": ("total_req", "sum"),
+        "total_fail": ("total_fail", "sum"),
+    }
+    if tiene_usuarios:
+        agregaciones["user_count"] = ("user_count", "first")
+
+    return (
         sub.groupby("Timestamp", as_index=False)
-        .agg(
-            rps=("rps", "sum"),
-            fallos_s=("fallos_s", "sum"),
-            p50_ms=("p50_ms", "median"),
-            p95_ms=("p95_ms", "max"),
-            total_req=("total_req", "sum"),
-            total_fail=("total_fail", "sum"),
-        )
+        .agg(**agregaciones)
         .sort_values("Timestamp")
         .reset_index(drop=True)
     )
-    return agrupado
 
 
 def serie_temporal_carga(historia: pd.DataFrame) -> pd.DataFrame:
     """Construye la serie agregada por segundo transcurrido para las gráficas de Locust."""
-    serie = _serie_por_modo(historia, "agregado")
+    serie = _serie_por_modo(historia, "por_peticion")
     if serie.empty:
         raise ValueError("El archivo de historial de Locust no contiene filas 'Aggregated'.")
     t0 = float(serie["Timestamp"].min())
@@ -136,15 +146,31 @@ def preparar_recursos(recursos: pd.DataFrame, t0: float) -> pd.DataFrame:
     return df.dropna(subset=["epoch"]).sort_values("epoch").reset_index(drop=True)
 
 
+def leer_limite_cpu_api(ruta_maquina: Path) -> float | None:
+    """Lee de `maquina.json` el límite de CPU del contenedor `api` en porcentaje (2 vCPU → 200)."""
+    if not ruta_maquina.exists():
+        return None
+    try:
+        datos = json.loads(ruta_maquina.read_text(encoding="utf-8"))
+        cpus = datos.get("contenedores", {}).get("api", {}).get("cpus")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return float(cpus) * 100.0 if cpus is not None and float(cpus) > 0 else None
+
+
 def resumen_por_escalon(
     historia: pd.DataFrame,
     recursos: pd.DataFrame,
     escalones: list[tuple[int, int]] = ESCALONES_CARGA,
     latencia_objetivo_ms: float = LATENCIA_OBJETIVO_MS,
     tasa_error_max: float = TASA_ERROR_MAX,
-    modo: str = "agregado",
+    modo: str = "por_peticion",
 ) -> pd.DataFrame:
-    """Resume desempeño y recursos de la API para cada escalón de la prueba de carga.
+    """Resume desempeño y recursos de la API en la meseta de cada escalón de la prueba de carga.
+
+    Usa `User Count == usuarios` para excluir los segundos de rampa entre escalones (cuando Locust
+    todavía está levantando usuarios) y alinea `recursos.csv` con el rango de `Timestamp` (`epoch`)
+    de cada meseta. Si el DataFrame no incluye `User Count`, recurre a `usuarios_en(segundo)`.
 
     Args:
         historia: DataFrame leído de `locust_stats_history.csv`.
@@ -152,7 +178,7 @@ def resumen_por_escalon(
         escalones: Lista de pares `(usuarios, duracion_seg)`.
         latencia_objetivo_ms: Umbral objetivo de p95 en milisegundos.
         tasa_error_max: Proporción máxima de errores permitida (p. ej. 0.01 = 1 %).
-        modo: `"agregado"`, `"una_estacion"` o `"lote"`.
+        modo: `"por_peticion"` (o `"agregado"`), `"una_estacion"` o `"lote"`.
 
     Returns:
         Tabla con una fila por escalón (`usuarios`, `rps`, `p50_ms`, `p95_ms`, `tasa_error`,
@@ -163,17 +189,18 @@ def resumen_por_escalon(
         return pd.DataFrame()
 
     t0 = float(_a_numerico(historia["Timestamp"]).min())
-    serie["segundo"] = serie["Timestamp"] - t0
-    serie["usuarios"] = serie["segundo"].apply(lambda s: usuarios_en(s, escalones))
+    usa_user_count = "user_count" in serie.columns and serie["user_count"].notna().any()
+    if usa_user_count:
+        serie["usuarios"] = serie["user_count"]
+    else:
+        serie["segundo"] = serie["Timestamp"] - t0
+        serie["usuarios"] = serie["segundo"].apply(lambda s: usuarios_en(s, escalones))
 
     rec_api = preparar_recursos(recursos, t0)
     if not rec_api.empty:
         rec_api = rec_api[rec_api["contenedor"] == "api"].copy()
-        rec_api["usuarios"] = rec_api["segundo"].apply(lambda s: usuarios_en(s, escalones))
 
     filas = []
-    req_prev = 0.0
-    fail_prev = 0.0
     for usuarios, _ in escalones:
         bloque = serie[serie["usuarios"] == usuarios]
         if bloque.empty:
@@ -183,17 +210,13 @@ def resumen_por_escalon(
         p50_ms = float(bloque["p50_ms"].median()) if bloque["p50_ms"].notna().any() else math.nan
         p95_ms = float(bloque["p95_ms"].median()) if bloque["p95_ms"].notna().any() else math.nan
 
-        req_fin = float(bloque["total_req"].max())
-        fail_fin = float(bloque["total_fail"].max())
-        delta_req = req_fin - req_prev
-        delta_fail = max(0.0, fail_fin - fail_prev)
+        delta_req = float(bloque["total_req"].iloc[-1] - bloque["total_req"].iloc[0])
+        delta_fail = max(0.0, float(bloque["total_fail"].iloc[-1] - bloque["total_fail"].iloc[0]))
         if delta_req > 0:
             tasa_error = delta_fail / delta_req
         else:
             suma_rps = float(bloque["rps"].sum())
             tasa_error = float(bloque["fallos_s"].sum()) / suma_rps if suma_rps > 0 else 0.0
-        req_prev = max(req_prev, req_fin)
-        fail_prev = max(fail_prev, fail_fin)
 
         cumple = (
             rps > 0
@@ -202,7 +225,12 @@ def resumen_por_escalon(
             and tasa_error <= tasa_error_max
         )
 
-        rec_bloque = rec_api[rec_api["usuarios"] == usuarios] if not rec_api.empty else rec_api
+        if not rec_api.empty:
+            t_inicio = float(bloque["Timestamp"].min())
+            t_fin = float(bloque["Timestamp"].max())
+            rec_bloque = rec_api[rec_api["epoch"].between(t_inicio, t_fin)]
+        else:
+            rec_bloque = rec_api
         cpu_media = float(rec_bloque["cpu_pct"].mean()) if not rec_bloque.empty else math.nan
         cpu_max = float(rec_bloque["cpu_pct"].max()) if not rec_bloque.empty else math.nan
         mem_max = float(rec_bloque["mem_mib"].max()) if not rec_bloque.empty else math.nan
@@ -227,16 +255,17 @@ def escalon_sostenible(
     tabla_escalones: pd.DataFrame,
     latencia_objetivo_ms: float = LATENCIA_OBJETIVO_MS,
     tasa_error_max: float = TASA_ERROR_MAX,
-    etiqueta: str = "agregado",
+    etiqueta: str = "por_peticion",
+    columna_orden: str = "rps",
 ) -> pd.Series:
-    """Devuelve la fila del escalón con mayor RPS que cumple latencia p95 y tasa de error.
+    """Devuelve la fila del escalón con mayor rendimiento que cumple latencia p95 y tasa de error.
 
     Raises:
         ValueError: Si ningún escalón cumple los objetivos de servicio.
     """
     if tabla_escalones.empty:
         raise ValueError(f"No hay datos de escalones para '{etiqueta}'.")
-    validos = tabla_escalones[tabla_escalones["cumple_slo"] & (tabla_escalones["rps"] > 0)]
+    validos = tabla_escalones[tabla_escalones["cumple_slo"] & (tabla_escalones[columna_orden] > 0)]
     if validos.empty:
         p95_min = tabla_escalones["p95_ms"].min(skipna=True)
         err_min = tabla_escalones["tasa_error"].min(skipna=True) * 100
@@ -246,16 +275,16 @@ def escalon_sostenible(
             f"Mejor observado: p95={p95_min:.1f} ms, error={err_min:.2f} %. "
             "No se puede calcular el costo por inferencia sin dividir entre cero."
         )
-    indice_mejor = validos["rps"].idxmax()
+    indice_mejor = validos[columna_orden].idxmax()
     return validos.loc[indice_mejor]
 
 
 def costo_por_inferencia(
     rps_sostenible: float,
     precio_hora_usd: float = PRECIO_HORA_USD,
-    predicciones_por_peticion: int = 1,
+    predicciones_por_peticion: float = 1,
 ) -> tuple[float, float]:
-    """Calcula el costo por inferencia y por 1,000 inferencias en USD.
+    """Calcula el costo por inferencia y por 1,000 inferencias en USD a plena capacidad.
 
     Fórmula: `PRECIO_HORA_USD / (rps_sostenible * predicciones_por_peticion * 3600)`.
 
@@ -278,7 +307,7 @@ def costo_por_inferencia(
 
 def escalabilidad_mibici(
     rps_sostenible: float,
-    predicciones_por_peticion: int = 1,
+    predicciones_por_peticion: float = 1,
     precio_hora_usd: float = PRECIO_HORA_USD,
     estaciones_lote: int = LOTE_CARGA,
     bloque_horas: int = BLOQUE_HORAS,
@@ -292,9 +321,14 @@ def escalabilidad_mibici(
     - P2: `estaciones_lote` (470) predicciones por cada bloque de `bloque_horas` (3 h → 8 bloques/día).
     Pico simultáneo: arranque de un bloque donde coinciden P1 y P2 (`2 * estaciones_lote` = 940
     predicciones) atendido dentro de `ventana_pico_seg` (60 s por defecto).
+
+    `costo_efectivo_1000_usd` refleja el costo real de mantener la instancia encendida todo el mes
+    repartido entre las predicciones reales (`costo_mensual_instancia_usd / demanda_mensual_pred * 1000`).
     """
     if rps_sostenible <= 0:
         raise ValueError("El RPS sostenible debe ser mayor que cero.")
+    if predicciones_por_peticion <= 0:
+        raise ValueError("`predicciones_por_peticion` debe ser mayor que cero.")
 
     bloques_por_dia = 24 // bloque_horas
     pred_dia_p1 = estaciones_lote
@@ -306,11 +340,8 @@ def escalabilidad_mibici(
     capacidad_mensual_pred = pred_por_segundo * SEGUNDOS_POR_HORA * horas_mes
     utilizacion_pct = (demanda_mensual_pred / capacidad_mensual_pred) * 100.0
 
-    costo_unitario, _ = costo_por_inferencia(
-        rps_sostenible, precio_hora_usd, predicciones_por_peticion
-    )
-    costo_mensual_instancia_usd = precio_hora_usd * horas_mes
-    costo_mensual_demanda_usd = demanda_mensual_pred * costo_unitario
+    costo_mensual_instancia = precio_hora_usd * horas_mes
+    costo_efectivo_1000_usd = (costo_mensual_instancia / demanda_mensual_pred) * 1000.0
 
     # Pico: P1 + P2 simultáneos (940 predicciones = 2 lotes) dentro de ventana_pico_seg
     pred_pico = 2 * estaciones_lote
@@ -321,10 +352,77 @@ def escalabilidad_mibici(
         "demanda_mensual_pred": int(demanda_mensual_pred),
         "capacidad_mensual_pred": round(capacidad_mensual_pred, 1),
         "utilizacion_pct": round(utilizacion_pct, 6),
-        "costo_mensual_instancia_usd": round(costo_mensual_instancia_usd, 2),
-        "costo_mensual_demanda_usd": costo_mensual_demanda_usd,
+        "costo_mensual_instancia_usd": round(costo_mensual_instancia, 2),
+        "costo_efectivo_1000_usd": round(costo_efectivo_1000_usd, 4),
         "instancias_pico": int(instancias_pico),
     }
+
+
+def _fila_finops(
+    modo: str,
+    mejor: pd.Series,
+    rps_sostenible: float,
+    pred_por_req: float,
+    precio_hora_usd: float,
+) -> dict:
+    """Construye una fila homogénea de la tabla `finops.csv`."""
+    costo_unit, costo_1000 = costo_por_inferencia(rps_sostenible, precio_hora_usd, pred_por_req)
+    esc = escalabilidad_mibici(rps_sostenible, pred_por_req, precio_hora_usd)
+    return {
+        "modo": modo,
+        "instancia_referencia": INSTANCIA_REFERENCIA,
+        "precio_hora_usd": precio_hora_usd,
+        "escalon_usuarios": int(mejor["usuarios"]),
+        "rps_sostenible": round(rps_sostenible, 3),
+        "p50_ms": mejor["p50_ms"],
+        "p95_ms": mejor["p95_ms"],
+        "tasa_error": mejor["tasa_error"],
+        "cpu_media_pct": mejor["cpu_media_pct"],
+        "cpu_max_pct": mejor["cpu_max_pct"],
+        "mem_max_mib": mejor["mem_max_mib"],
+        "predicciones_por_peticion": round(pred_por_req, 2),
+        "predicciones_por_segundo": round(rps_sostenible * pred_por_req, 3),
+        "costo_inferencia_usd": costo_unit,
+        "costo_1000_inferencias_usd": costo_1000,
+        **esc,
+    }
+
+
+def _mezcla_por_prediccion(
+    tabla_una: pd.DataFrame,
+    tabla_lote: pd.DataFrame,
+    latencia_objetivo_ms: float,
+    tasa_error_max: float,
+) -> tuple[pd.Series, float, float]:
+    """Combina los escalones de `[1]` y `[470]` en la mezcla real (excluyendo `/health`).
+
+    Calcula `predicciones_por_segundo = rps[1] + LOTE_CARGA * rps[470]` y selecciona el escalón
+    con mayor tasa de predicciones por segundo en que ambos tipos cumplan el SLO.
+    """
+    combinada = tabla_una.merge(tabla_lote, on="usuarios", suffixes=("_1", "_lote"))
+    if combinada.empty:
+        raise ValueError("No hay escalones comunes entre 'una_estacion' y 'lote'.")
+
+    combinada["rps"] = combinada["rps_1"] + combinada["rps_lote"]
+    combinada["pred_por_seg"] = combinada["rps_1"] + LOTE_CARGA * combinada["rps_lote"]
+    combinada["p50_ms"] = np.maximum(combinada["p50_ms_1"], combinada["p50_ms_lote"])
+    combinada["p95_ms"] = np.maximum(combinada["p95_ms_1"], combinada["p95_ms_lote"])
+    combinada["tasa_error"] = np.maximum(combinada["tasa_error_1"], combinada["tasa_error_lote"])
+    combinada["cumple_slo"] = combinada["cumple_slo_1"] & combinada["cumple_slo_lote"]
+    combinada["cpu_media_pct"] = combinada["cpu_media_pct_1"]
+    combinada["cpu_max_pct"] = combinada["cpu_max_pct_1"]
+    combinada["mem_max_mib"] = combinada["mem_max_mib_1"]
+
+    mejor = escalon_sostenible(
+        combinada,
+        latencia_objetivo_ms,
+        tasa_error_max,
+        etiqueta="por_prediccion",
+        columna_orden="pred_por_seg",
+    )
+    rps_mix = float(mejor["rps"])
+    pred_por_req = float(mejor["pred_por_seg"]) / rps_mix
+    return mejor, rps_mix, pred_por_req
 
 
 def analizar_finops(
@@ -335,11 +433,17 @@ def analizar_finops(
     latencia_objetivo_ms: float = LATENCIA_OBJETIVO_MS,
     tasa_error_max: float = TASA_ERROR_MAX,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Ejecuta el análisis por escalón y calcula costo por inferencia y escalabilidad por modo.
+    """Ejecuta el análisis por escalón y calcula costo y escalabilidad para cada modo.
+
+    Modos en `tabla_finops`:
+    - `por_peticion`: costo por petición HTTP sobre `Aggregated` (incluye `/health`).
+    - `por_prediccion`: costo por predicción sobre la mezcla real (`rps[1] + 470 * rps[470]`),
+      excluyendo `/health`.
+    - `una_estacion`: cota superior cargando toda la instancia solo al tráfico `[1]`.
+    - `lote`: cota superior cargando toda la instancia solo al tráfico `[470]`.
 
     Returns:
-        `(tabla_escalones, tabla_finops)` donde `tabla_escalones` resume cada escalón agregado y
-        `tabla_finops` trae una fila por modo (`agregado`, `una_estacion`, `lote`).
+        `(tabla_escalones, tabla_finops)`.
     """
     tabla_escalones = resumen_por_escalon(
         historia,
@@ -347,59 +451,55 @@ def analizar_finops(
         escalones=escalones,
         latencia_objetivo_ms=latencia_objetivo_ms,
         tasa_error_max=tasa_error_max,
-        modo="agregado",
+        modo="por_peticion",
     )
-    mejor_agregado = escalon_sostenible(
-        tabla_escalones, latencia_objetivo_ms, tasa_error_max, etiqueta="agregado"
+    mejor_peticion = escalon_sostenible(
+        tabla_escalones, latencia_objetivo_ms, tasa_error_max, etiqueta="por_peticion"
     )
 
-    modos = [
-        ("agregado", 1, tabla_escalones, mejor_agregado),
-        ("una_estacion", 1, None, None),
-        ("lote", LOTE_CARGA, None, None),
+    tabla_una = resumen_por_escalon(
+        historia,
+        recursos,
+        escalones=escalones,
+        latencia_objetivo_ms=latencia_objetivo_ms,
+        tasa_error_max=tasa_error_max,
+        modo="una_estacion",
+    )
+    tabla_lote = resumen_por_escalon(
+        historia,
+        recursos,
+        escalones=escalones,
+        latencia_objetivo_ms=latencia_objetivo_ms,
+        tasa_error_max=tasa_error_max,
+        modo="lote",
+    )
+
+    filas_finops = [
+        _fila_finops(
+            "por_peticion", mejor_peticion, float(mejor_peticion["rps"]), 1, precio_hora_usd
+        )
     ]
 
-    filas_finops = []
-    for modo, pred_por_req, tabla_modo, mejor_modo in modos:
-        if tabla_modo is None:
-            tabla_modo = resumen_por_escalon(
-                historia,
-                recursos,
-                escalones=escalones,
-                latencia_objetivo_ms=latencia_objetivo_ms,
-                tasa_error_max=tasa_error_max,
-                modo=modo,
-            )
-            if tabla_modo.empty:
-                # Si el historial no traía filas desagregadas por ruta, se usa el RPS agregado
-                mejor_modo = mejor_agregado
-            else:
-                mejor_modo = escalon_sostenible(
-                    tabla_modo, latencia_objetivo_ms, tasa_error_max, etiqueta=modo
-                )
-
-        rps = float(mejor_modo["rps"])
-        costo_unit, costo_1000 = costo_por_inferencia(rps, precio_hora_usd, pred_por_req)
-        esc = escalabilidad_mibici(rps, pred_por_req, precio_hora_usd)
+    if not tabla_una.empty and not tabla_lote.empty:
+        mejor_mix, rps_mix, pred_por_req_mix = _mezcla_por_prediccion(
+            tabla_una, tabla_lote, latencia_objetivo_ms, tasa_error_max
+        )
         filas_finops.append(
-            {
-                "modo": modo,
-                "instancia_referencia": INSTANCIA_REFERENCIA,
-                "precio_hora_usd": precio_hora_usd,
-                "escalon_usuarios": int(mejor_modo["usuarios"]),
-                "rps_sostenible": rps,
-                "p50_ms": mejor_modo["p50_ms"],
-                "p95_ms": mejor_modo["p95_ms"],
-                "tasa_error": mejor_modo["tasa_error"],
-                "cpu_media_pct": mejor_modo["cpu_media_pct"],
-                "cpu_max_pct": mejor_modo["cpu_max_pct"],
-                "mem_max_mib": mejor_modo["mem_max_mib"],
-                "predicciones_por_peticion": pred_por_req,
-                "predicciones_por_segundo": round(rps * pred_por_req, 3),
-                "costo_inferencia_usd": costo_unit,
-                "costo_1000_inferencias_usd": costo_1000,
-                **esc,
-            }
+            _fila_finops("por_prediccion", mejor_mix, rps_mix, pred_por_req_mix, precio_hora_usd)
+        )
+
+    for modo, pred_por_req, tabla_modo in (
+        ("una_estacion", 1, tabla_una),
+        ("lote", LOTE_CARGA, tabla_lote),
+    ):
+        if tabla_modo.empty:
+            mejor_modo = mejor_peticion
+        else:
+            mejor_modo = escalon_sostenible(
+                tabla_modo, latencia_objetivo_ms, tasa_error_max, etiqueta=modo
+            )
+        filas_finops.append(
+            _fila_finops(modo, mejor_modo, float(mejor_modo["rps"]), pred_por_req, precio_hora_usd)
         )
 
     return tabla_escalones, pd.DataFrame(filas_finops)
@@ -415,6 +515,9 @@ def main(
         Path, typer.Option(help="Historial de Locust por segundo")
     ] = HISTORIA_CSV,
     recursos_csv: Annotated[Path, typer.Option(help="Muestras de CPU y memoria")] = RECURSOS_CSV,
+    maquina_json: Annotated[
+        Path, typer.Option(help="Hardware y límites de contenedores")
+    ] = MAQUINA_JSON,
     salida_finops: Annotated[
         Path, typer.Option(help="Tabla de costos y escalabilidad")
     ] = FINOPS_CSV,
@@ -451,10 +554,11 @@ def main(
     tabla_finops.to_csv(salida_finops, index=False)
 
     rps_sost = float(
-        tabla_finops.loc[tabla_finops["modo"] == "agregado", "rps_sostenible"].iloc[0]
+        tabla_finops.loc[tabla_finops["modo"] == "por_peticion", "rps_sostenible"].iloc[0]
     )
     t0 = float(_a_numerico(historia["Timestamp"]).min())
     rec_alineado = preparar_recursos(recursos, t0)
+    limite_cpu_pct = leer_limite_cpu_api(maquina_json)
 
     rutas_figuras = [
         plots.latencia_carga(
@@ -467,11 +571,16 @@ def main(
             figuras_dir / FIG_RPS_ERROR.name,
             rps_sostenible=rps_sost,
         ),
-        plots.recursos_carga(rec_alineado, ESCALONES_CARGA, figuras_dir / FIG_RECURSOS.name),
+        plots.recursos_carga(
+            rec_alineado,
+            ESCALONES_CARGA,
+            figuras_dir / FIG_RECURSOS.name,
+            limite_cpu_pct=limite_cpu_pct,
+        ),
     ]
 
     logger.info(
-        f"\n=== Métricas por escalón ({INSTANCIA_REFERENCIA}) ===\n"
+        f"\n=== Métricas por escalón en meseta ({INSTANCIA_REFERENCIA}) ===\n"
         f"{tabla_escalones.to_string(index=False)}"
     )
     cols_resumen = [
@@ -480,7 +589,7 @@ def main(
         "rps_sostenible",
         "predicciones_por_segundo",
         "costo_1000_inferencias_usd",
-        "demanda_mensual_pred",
+        "costo_efectivo_1000_usd",
         "utilizacion_pct",
         "costo_mensual_instancia_usd",
         "instancias_pico",

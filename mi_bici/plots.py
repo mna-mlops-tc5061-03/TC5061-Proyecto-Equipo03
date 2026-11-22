@@ -187,7 +187,7 @@ def drift_y_error_por_mes(
 
 
 def _marcar_escalones(ax, escalones: list[tuple[int, int]], con_etiqueta: bool = True) -> None:
-    """Traza líneas verticales en los cambios de escalón de la prueba de carga."""
+    """Traza líneas verticales en los cambios de escalón y rotula arriba del marco."""
     inicio = 0
     for indice, (usuarios, duracion) in enumerate(escalones):
         if indice > 0:
@@ -195,11 +195,11 @@ def _marcar_escalones(ax, escalones: list[tuple[int, int]], con_etiqueta: bool =
         if con_etiqueta:
             ax.text(
                 inicio + duracion / 2,
-                0.97,
+                1.015,
                 f"{usuarios} u",
                 transform=ax.get_xaxis_transform(),
                 ha="center",
-                va="top",
+                va="bottom",
                 fontsize=8,
                 color="dimgray",
             )
@@ -223,7 +223,7 @@ def latencia_carga(
     Returns:
         La ruta de la gráfica.
     """
-    fig, ax = plt.subplots(figsize=(10, 4.2))
+    fig, ax = plt.subplots(figsize=(10, 4.4))
     ax.plot(serie["segundo"], serie["p50_ms"], color="#1f77b4", label="p50")
     ax.plot(serie["segundo"], serie["p95_ms"], color="#ff7f0e", label="p95")
     ax.axhline(
@@ -233,12 +233,9 @@ def latencia_carga(
         label=f"objetivo p95 ({latencia_objetivo_ms:.0f} ms)",
     )
     _marcar_escalones(ax, escalones)
-    ax.set(
-        xlabel="tiempo transcurrido (s)",
-        ylabel="latencia (ms)",
-        title="Latencia p50 y p95 durante la prueba de carga",
-    )
-    ax.legend(loc="upper left")
+    ax.set(xlabel="tiempo transcurrido (s)", ylabel="latencia (ms)")
+    ax.set_title("Latencia p50 y p95 durante la prueba de carga", pad=18)
+    ax.legend(loc="center left")
     return _guardar(fig, ruta)
 
 
@@ -261,7 +258,7 @@ def rps_y_error_carga(
     Returns:
         La ruta de la gráfica.
     """
-    fig, (ax_rps, ax_err) = plt.subplots(1, 2, figsize=(11, 4.2))
+    fig, (ax_rps, ax_err) = plt.subplots(1, 2, figsize=(11, 4.4))
 
     ax_rps.plot(serie["segundo"], serie["rps"], color="#1f77b4", label="RPS")
     if rps_sostenible is not None:
@@ -272,11 +269,8 @@ def rps_y_error_carga(
             label=f"RPS sostenible ({rps_sostenible:.1f})",
         )
     _marcar_escalones(ax_rps, escalones)
-    ax_rps.set(
-        xlabel="tiempo transcurrido (s)",
-        ylabel="peticiones por segundo",
-        title="Rendimiento (RPS) en el tiempo",
-    )
+    ax_rps.set(xlabel="tiempo transcurrido (s)", ylabel="peticiones por segundo")
+    ax_rps.set_title("Rendimiento (RPS) en el tiempo", pad=18)
     ax_rps.legend(loc="lower right")
 
     limite_pct = tasa_error_max * 100
@@ -293,9 +287,9 @@ def rps_y_error_carga(
         xlabel="tiempo transcurrido (s)",
         ylabel="errores (%)",
         ylim=(-0.2, max(limite_pct * 2, max_err * 1.15)),
-        title="Tasa de error en el tiempo",
     )
-    ax_err.legend(loc="upper left")
+    ax_err.set_title("Tasa de error en el tiempo", pad=18)
+    ax_err.legend(loc="upper right")
     return _guardar(fig, ruta)
 
 
@@ -303,6 +297,7 @@ def recursos_carga(
     recursos: pd.DataFrame,
     escalones: list[tuple[int, int]],
     ruta: Path,
+    limite_cpu_pct: float | None = None,
 ) -> Path:
     """Grafica CPU (%) y memoria (MiB) de los contenedores `api` y `mlflow` durante la carga.
 
@@ -310,11 +305,12 @@ def recursos_carga(
         recursos: Tabla con `segundo`, `contenedor`, `cpu_pct` y `mem_mib`.
         escalones: Lista de pares `(usuarios, duracion_seg)`.
         ruta: Ruta del archivo PNG.
+        limite_cpu_pct: Límite de CPU del contenedor `api` en % (p. ej. 200 para 2 vCPU), opcional.
 
     Returns:
         La ruta de la gráfica.
     """
-    fig, (ax_cpu, ax_mem) = plt.subplots(1, 2, figsize=(11, 4.2))
+    fig, (ax_cpu, ax_mem) = plt.subplots(1, 2, figsize=(11, 4.4))
     colores = {"api": "#1f77b4", "mlflow": "#ff7f0e"}
 
     if recursos.empty:
@@ -333,19 +329,26 @@ def recursos_carga(
                 continue
             ax_cpu.plot(sub["segundo"], sub["cpu_pct"], label=str(contenedor))
             ax_mem.plot(sub["segundo"], sub["mem_mib"], label=str(contenedor))
-        ax_cpu.legend(loc="upper left")
-        ax_mem.legend(loc="upper left")
+
+    if limite_cpu_pct is not None:
+        ax_cpu.axhline(
+            limite_cpu_pct,
+            color="#d62728",
+            linestyle="--",
+            label=f"límite api ({limite_cpu_pct:.0f} %)",
+        )
+        max_cpu = float(recursos["cpu_pct"].fillna(0.0).max()) if not recursos.empty else 0.0
+        ax_cpu.set_ylim(bottom=0, top=max(limite_cpu_pct, max_cpu) * 1.08)
+
+    if not recursos.empty or limite_cpu_pct is not None:
+        ax_cpu.legend(loc="center left")
+    if not recursos.empty:
+        ax_mem.legend(loc="center right")
 
     _marcar_escalones(ax_cpu, escalones)
     _marcar_escalones(ax_mem, escalones)
-    ax_cpu.set(
-        xlabel="tiempo transcurrido (s)",
-        ylabel="CPU (%)",
-        title="Uso de CPU por contenedor",
-    )
-    ax_mem.set(
-        xlabel="tiempo transcurrido (s)",
-        ylabel="memoria (MiB)",
-        title="Uso de memoria por contenedor",
-    )
+    ax_cpu.set(xlabel="tiempo transcurrido (s)", ylabel="CPU (%)")
+    ax_cpu.set_title("Uso de CPU por contenedor", pad=18)
+    ax_mem.set(xlabel="tiempo transcurrido (s)", ylabel="memoria (MiB)")
+    ax_mem.set_title("Uso de memoria por contenedor", pad=18)
     return _guardar(fig, ruta)

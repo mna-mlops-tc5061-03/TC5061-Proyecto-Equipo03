@@ -9,7 +9,7 @@ Proyecto de ML para el sistema MiBici. Con los viajes que publica el
 operación: demanda por estación (regresión), riesgo de quedarse sin bicis o sin anclajes
 (clasificación) y grupos de estaciones con patrones de uso parecidos (clustering). Los experimentos
 se registran en MLflow, los mejores modelos quedan en el Model Registry y los de P1 y P2 se sirven
-como API REST en un contenedor.
+como API REST en un contenedor. MLflow y la API se levantan juntos con Docker Compose.
 
 | Entrega | Dónde está |
 |---|---|
@@ -18,6 +18,7 @@ como API REST en un contenedor.
 | 3. Pruebas y chequeos de seguridad | [Pruebas y chequeos](#pruebas-y-chequeos) |
 | 4. API REST en contenedor | [Despliegue de la API con Docker](#despliegue-de-la-api-con-docker) |
 | 5. Monitoreo, drift y A/B testing | [Monitoreo, drift y A/B testing](#monitoreo-drift-y-ab-testing) y `reports/TC5061_Drift_ABTest_Equipo03.pdf` |
+| 6. Compose, CI/CD, pruebas de carga y FinOps | [Operación con Compose, CI/CD y pruebas de carga](#operación-con-compose-cicd-y-pruebas-de-carga) y `reports/TC5061_Operacion_FinOps_Equipo03.pdf` |
 
 ## Preguntas
 
@@ -186,6 +187,10 @@ make security          # revisa el código con bandit y las dependencias con pip
 make api               # levanta la API localmente con uvicorn, sin contenedor
 make image             # construye la imagen de la API
 make container         # corre la API en un contenedor con el modelo del Registry
+make sistema           # levanta MLflow y la API con Docker Compose
+make sistema-abajo     # apaga el sistema de Compose
+make carga             # prueba de carga con Locust, con CPU y memoria de cada contenedor
+make finops            # tablas, gráficas y costo por inferencia de la prueba de carga
 ```
 
 ### Validación de datos con DeepChecks
@@ -267,6 +272,10 @@ La API sirve con FastAPI (`mi_bici/api/`) los champions de P1 y P2 del Model Reg
 modelo por su alias al arrancar, valida la entrada y la salida con Pydantic y responde en JSON.
 La imagen empaca únicamente las dependencias de inferencia (`requirements-api.txt`) y el código de
 `mi_bici/`, corriendo `uvicorn` con un usuario sin privilegios.
+
+Esta sección es de la entrega 4 y levanta MLflow y la API por separado. Desde la entrega 6 se
+levantan juntos con `make sistema` (ver
+[Operación con Compose, CI/CD y pruebas de carga](#operación-con-compose-cicd-y-pruebas-de-carga)).
 
 | Paso de la entrega | Dónde | PR |
 |---|---|---|
@@ -734,14 +743,176 @@ producción si gana el A/B. Las cifras por mes y la justificación están en el 
 
 **Referencia:** Huyen, C. (2022). *Designing machine learning systems*, cap. 8. O'Reilly Media.
 
+## Operación con Compose, CI/CD y pruebas de carga
+
+Esta sección es de la entrega 6. El sistema son dos servicios de Docker Compose (proyecto
+`mibici`): `mlflow`, con el Tracking y el Model Registry, y `api`, la API de la
+[entrega 4](#despliegue-de-la-api-con-docker), que sirve los `@champion` de P1 y P2. Se levanta con
+un solo comando, el CI lo prueba completo en cada PR y la imagen se publica en GitHub Container
+Registry con cada merge a `main`.
+
+| Paso de la entrega | Dónde | PR |
+|---|---|---|
+| MLflow y la API con un solo comando | `docker-compose.yml` y `make sistema` | [#170](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/170) |
+| El sistema completo en el CI | job `compose` de `.github/workflows/ci.yml` | [#171](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/171) |
+| CI con push a `main` y publicación en GHCR | jobs `publicar` y `resumen` | [#175](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/175) |
+| Escenario de Locust | `mi_bici/carga/locustfile.py` y `escenario.py` | [#173](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/173) |
+| Un hilo de OpenMP por predicción | `OMP_NUM_THREADS=1` en la API | [#179](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/179) |
+| CPU y memoria durante la prueba | `mi_bici/carga/recursos.py` y `make carga` | [#180](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/180) |
+| Costo por inferencia y gráficas | `mi_bici/carga/finops.py` y `make finops` | [#181](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/181) |
+| Pruebas de carga, recursos y costo | `tests/carga/` | [#182](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/182) |
+| Corrida oficial | `reports/carga/` y `reports/figures/semana10/` | [#183](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/183) |
+| Instrucciones y reporte | Esta sección y `reports/TC5061_Operacion_FinOps_Equipo03.pdf` | [#184](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/184), [#185](https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/pull/185) |
+
+```mermaid
+flowchart LR
+    U["Cliente o Locust<br/>127.0.0.1:8000"] --> API
+    subgraph red["red interna mibici"]
+        API["api<br/>imagen mibici-api<br/>2 vCPU · 4 GiB"] -- "http://mlflow:5000<br/>@champion al arrancar" --> ML["mlflow<br/>v3.17.2<br/>127.0.0.1:5001"]
+    end
+    ML --> V[("volumen mlflow-datos<br/>o carpeta MLFLOW_DATOS<br/>mlflow.db y mlartifacts/")]
+```
+
+- **Red:** los dos servicios están en la red interna `mibici`, y la API llama a MLflow por el
+  nombre del servicio (`http://mlflow:5000`). MLflow arranca con `--allowed-hosts` para aceptar ese
+  nombre.
+- **Volumen:** el Registry vive en el volumen `mlflow-datos`, o en una carpeta del host si se
+  define `MLFLOW_DATOS`.
+- **Orden de arranque:** la API arranca hasta que MLflow está sano (`depends_on: service_healthy`),
+  porque carga los modelos al arrancar.
+
+### Requisitos
+
+- Docker con Compose v2 (o Podman con `podman-compose`, ver abajo), con **al menos 2 CPU** para el
+  motor: la API está limitada a 2 vCPU y `make sistema` falla si Docker tiene menos.
+- Un Registry con P1 y P2 en `@champion`. Si falta alguno, la API no queda sana y `make sistema`
+  falla.
+
+### Primera vez: llenar el Registry
+
+```bash
+cp .env.example .env
+```
+
+Hay dos caminos:
+
+1. **Restaurar el paquete del equipo** (así se hizo la corrida oficial). Pon la carpeta con
+   `mlflow.db` y `mlartifacts/` en `mlflow_compose/` y define en el `.env`:
+
+   ```bash
+   MLFLOW_DATOS=./mlflow_compose
+   ```
+
+2. **Desde cero**, con el MLflow del compose y los datos procesados (`make data`):
+
+   ```bash
+   docker compose up -d --wait mlflow   # solo MLflow
+   make experimentos registry           # entrena y registra P1, P2 y P3 con @champion
+   ```
+
+   El `.env.example` ya apunta a `127.0.0.1:5001`, así que `make experimentos` registra en ese
+   MLflow. Como en la [corrida completa](#corrida-completa-de-la-entrega), el repositorio debe
+   estar sin cambios sin guardar.
+   Este camino entrena las 18 corridas de la entrega, así que tarda; la corrida oficial usó el paquete del equipo.
+
+### Levantar y apagar
+
+```bash
+make sistema         # docker compose up -d --build --wait: construye, levanta y espera a que los dos estén healthy
+make sistema-abajo   # apaga el sistema
+```
+
+| Servicio | URL | Healthcheck |
+|---|---|---|
+| API | http://127.0.0.1:8000 | `GET /health` da 200 solo con P1 y P2 cargados |
+| MLflow | http://127.0.0.1:5001 | `GET /health` cada 5 s, con `start_period` de 300 s porque la primera vez crea las tablas del Registry |
+
+Los puertos se publican solo en `127.0.0.1`. La API se prueba igual que en
+[Probar la API](#3-probar-la-api).
+
+| Variable del `.env` | Por defecto | Para qué |
+|---|---|---|
+| `MLFLOW_PUERTO` | `5001` | Puerto de MLflow en el host |
+| `API_PUERTO` | `8000` | Puerto de la API en el host |
+| `MLFLOW_DATOS` | volumen `mlflow-datos` | Carpeta con un Registry existente |
+| `MODELO_URI`, `MODELO_URI_P1` | `@champion` de P2 y P1 | Servir otra versión, como en la [entrega 4](#2-construir-y-correr-el-contenedor) |
+| `API_CPUS` | `2` | Límite de CPU de la API: el tamaño de la instancia del análisis FinOps |
+| `API_MEMORIA` | `4g` | Límite de memoria de la API |
+
+**Podman:** `make sistema MOTOR=podman` usa `podman-compose`.
+
+### Pipeline de CI/CD
+
+`.github/workflows/ci.yml` corre con cada PR a `main` y con cada push a `main` (el merge). En un PR,
+un push nuevo cancela la corrida anterior.
+
+| Job | PR | Push a `main` | Qué valida |
+|---|---|---|---|
+| `pipeline` (matriz: `lint`, `test`, `security`) | ✓ | ✓ | `make lint`, `make test` y `make security` en paralelo, con Python 3.13 y caché de pip |
+| `image` | ✓ | ✓ | Construye la imagen con `make image` y prueba `/health` y cada `/predict` con modelos de prueba |
+| `compose` | ✓ | ✓ | Levanta MLflow y la API con Compose, registra modelos de prueba con el alias `champion` y revisa que la API los cargue del Registry y responda |
+| `publicar` | «skipped» | ✓ si todo pasó | Publica la imagen en GHCR con las etiquetas `sha-<commit>` y `latest`, con caché de capas (`type=gha`) |
+| `resumen` | ✓ | ✓ | Escribe en la página de la corrida el resultado de cada job y la imagen publicada |
+
+La imagen publicada está en
+[GHCR](https://github.com/orgs/mna-mlops-tc5061-03/packages/container/package/mibici-api):
+
+```bash
+docker pull ghcr.io/mna-mlops-tc5061-03/mibici-api:latest
+```
+
+![Corrida del CI en main con los 7 jobs en verde](reports/figures/semana10/pipeline_main.png)
+
+### Pruebas de carga y FinOps
+
+Con el sistema arriba (`make sistema`):
+
+```bash
+make carga    # Locust: 10, 50, 100 y 200 usuarios, 60 s por escalón, y CPU y memoria con docker stats
+make finops   # tablas por escalón, costo por inferencia y las tres gráficas
+```
+
+| Comando | Qué genera | Dónde |
+|---|---|---|
+| `make carga` | CSV de Locust, `locust.html`, `recursos.csv` y `maquina.json` | `reports/carga/` |
+| `make finops` | `escalones.csv` y `finops.csv` | `reports/carga/` |
+| `make finops` | `latencia_carga.png`, `rps_y_error_carga.png` y `recursos_carga.png` | `reports/figures/semana10/` |
+
+Para probar otra API se cambia `HOST_CARGA`. Cada usuario simula a alguien de la operación de
+MiBici: casi siempre consulta una estación de P1 o de P2, a veces manda el lote de las 470
+estaciones y de vez en cuando revisa `/health`. Una petición falla si no responde 200 o no trae una
+predicción por observación.
+
+### Cifras de la corrida oficial
+
+Corrida del 22 de noviembre de 2026 (#167, PR #183), commit `ab60f25`, con la API limitada a
+2 vCPU y 4 GiB. Hubo 0 fallas en 20,782 peticiones.
+
+| Usuarios | RPS | p50 | p95 | Error | CPU de la API (media) |
+|---|---|---|---|---|---|
+| 10 | 9.9 | 13 ms | 29 ms | 0 % | 12 % |
+| 50 | 45.9 | 8 ms | 26 ms | 0 % | 27 % |
+| 100 | 94.4 | 7 ms | 27 ms | 0 % | 42 % |
+| 200 | 189.6 | 12 ms | 70 ms | 0 % | 87 % |
+
+Con una AWS EC2 t3.medium (2 vCPU y 4 GiB) a $0.0416 por hora, el costo es
+**$5.78 × 10⁻⁷ por 1,000 predicciones** a plena capacidad y **$0.236 por 1,000** con la demanda
+real de MiBici (126,900 predicciones al mes), porque casi todo el tiempo la instancia está
+ociosa.
+
+![Latencia p50 y p95 durante la prueba de carga](reports/figures/semana10/latencia_carga.png)
+
+El análisis completo, con las gráficas interpretadas y las optimizaciones, está en
+`reports/TC5061_Operacion_FinOps_Equipo03.pdf`.
+
 ## Pruebas y chequeos
 
 Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno necesita el servidor
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 303 pruebas de tests/
-make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
+make test            # las 328 pruebas de tests/
+make test-fast       # las mismas sin las 10 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt y requirements-api.txt
 make lint            # formato y estilo con ruff, también de tests/
@@ -788,6 +959,7 @@ MiBici y todas corren en el CI.
 | `api/test_esquemas.py` | Los esquemas de P1 y P2 tienen las variables de la firma del modelo y sus ejemplos son válidos | 4 |
 | `modeling/test_reentrenar.py` | El challenger es una versión nueva con los mismos hiperparámetros, sin filas de octubre, y el champion no se mueve | 2 |
 | `ab_testing/test_ab_testing.py` | Regla de decisión: se promueve un challenger claramente mejor y no uno idéntico o peor. El p-valor es por estación y no por fila, el intervalo bootstrap es reproducible y más ancho al remuestrear estaciones, y los aliases solo se mueven con `--promover` | 11 |
+| `carga/` | Escenario de Locust, muestreo de CPU y memoria y cálculo del costo por inferencia (#182) | 25 |
 | `monitoreo/test_drift.py` | Drift con Evidently sobre datos sintéticos: marca una variable numérica o categórica desplazada y no una idéntica. Los periodos no se traslapan, no entran columnas personales y la evaluación por mes detecta el mes con drift y mayor error | 11 |
 
 **Reproducibilidad.** `test_reproducibilidad.py` entrena dos veces con `SEMILLA` un candidato de
@@ -909,7 +1081,9 @@ bandit antes del #89, con sus 5 hallazgos y el resumen:
 Cada PR a `main` corre `make lint`, `make test` y `make security` en GitHub Actions
 (`.github/workflows/ci.yml`), con un job por comando para ver por separado cuál falla. Desde la
 entrega 4, el job `image` construye la imagen con `make image`, la levanta con modelos de prueba y
-comprueba `/health` y cada `/predict`.
+comprueba `/health` y cada `/predict`. Desde la entrega 6, el job `compose` prueba el sistema
+completo, el CI también corre con cada push a `main` y publica la imagen en GHCR (ver
+[Pipeline de CI/CD](#pipeline-de-cicd)).
 `make validar-datos` no corre ahí porque necesita los datos de MiBici, que no se versionan, pero
 `tests/test_validacion.py` sí, con datos sintéticos.
 
@@ -938,7 +1112,10 @@ Los cuatro jobs en verde en el PR [#125](https://github.com/mna-mlops-tc5061-03/
 | Validación en la API | Pydantic rechaza con 422 campos faltantes, extra o fuera de rango antes de llamar al modelo, y valida también la salida |
 | Modelo por alias | La API carga `@champion` del Model Registry y reporta la versión en cada respuesta: promover un modelo no requiere reconstruir la imagen |
 | Imagen mínima y sin privilegios | Solo las dependencias de inferencia (`requirements-api.txt`), sin datos ni `.env` (`.dockerignore`), con un usuario sin privilegios y un `HEALTHCHECK` a `/health` |
-| API solo en local | `make container` publica el puerto en `127.0.0.1`, no en toda la red |
+| API solo en local | `make container` y `make sistema` publican los puertos en `127.0.0.1`, no en toda la red |
+| Sistema con un solo comando | `make sistema` levanta MLflow y la API con Compose y espera sus healthchecks; el CI lo prueba igual en cada PR |
+| Imagen publicada solo si todo pasa | El CI publica en GHCR con push a `main` y solo si pasaron todos los jobs, etiquetada con el commit |
+| Costo medido | La prueba de carga mide RPS, latencia, CPU y memoria, y `make finops` calcula el costo por inferencia con esas cifras |
 | Flujo de trabajo | GitHub Flow, rama `main` protegida, Pull Requests con revisión y Conventional Commits |
 
 ## Estructura
@@ -955,6 +1132,11 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── validacion.py        # validación de los datos con DeepChecks
 │   ├── monitoreo.py         # drift de P1 con Evidently y evolución mensual del drift y del MAE
 │   ├── ab_testing.py        # A/B offline de P1 entre champion y challenger y regla de decisión
+│   ├── carga/
+│   │   ├── locustfile.py    # usuario de Locust: consultas de una estación, lotes de 470 y /health
+│   │   ├── escenario.py     # observaciones sintéticas y escalones de la prueba
+│   │   ├── recursos.py      # CPU y memoria de cada contenedor con docker stats
+│   │   └── finops.py        # tablas por escalón, costo por inferencia y gráficas
 │   ├── api/
 │   │   ├── app.py           # API de FastAPI: /health, /predict/riesgo y /predict/demanda
 │   │   └── esquemas.py      # esquemas de Pydantic de entrada y salida, con ejemplos
@@ -974,15 +1156,19 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── references/              # ML Canvas, diagramas y referencias
 ├── reports/                 # reportes PDF de cada entrega y figures/ (capturas por semana)
 │   ├── evidently/           # reporte HTML de drift de P1, tablas CSV y gráfica por mes
-│   └── ab_testing/          # tabla del A/B de P1 (p1_ab.csv)
-├── tests/                   # pruebas unitarias, ordenadas como mi_bici/
+│   ├── ab_testing/          # tabla del A/B de P1 (p1_ab.csv)
+│   ├── carga/               # resultados de make carga y make finops (CSV, locust.html, maquina.json)
+│   └── figures/semana10/    # gráficas de carga y capturas de la entrega 6
+├── tests/                   # pruebas unitarias, ordenadas como mi_bici/; carga/ y ci/ (modelos falsos del CI)
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make drift, make reentrenar, make ab-test, make test, make test-fast, make lint, make security, make api, make image, make container
+├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make drift, make reentrenar, make ab-test, make test, make test-fast, make lint, make security, make api, make image, make container, make sistema, make sistema-abajo, make carga, make finops
+├── docker-compose.yml       # servicios mlflow y api, red mibici, volumen mlflow-datos y healthchecks
+├── .github/workflows/ci.yml # CI/CD: matriz lint, test y security, image, compose, publicar y resumen
 ├── Dockerfile               # imagen de la API: dependencias de inferencia, código y usuario sin privilegios
 ├── .dockerignore            # deja fuera de la imagen los datos, MLflow, .env, pruebas y documentación
 ├── MLproject                # entradas ingest, train y search de MLflow
 ├── python_env.yaml          # entorno del MLflow Project
-├── .env.example             # MLFLOW_TRACKING_URI del servidor de tracking
+├── .env.example             # MLFLOW_TRACKING_URI y las variables del compose (puertos, datos, modelos y límites)
 ├── requirements.txt         # dependencias con versiones fijas
 ├── requirements-api.txt     # dependencias de la API, también con versiones fijas
 └── pyproject.toml           # metadatos del paquete y configuración de ruff y bandit

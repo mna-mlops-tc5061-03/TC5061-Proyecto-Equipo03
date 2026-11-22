@@ -813,7 +813,7 @@ Hay dos caminos:
    El `.env.example` ya apunta a `127.0.0.1:5001`, así que `make experimentos` registra en ese
    MLflow. Como en la [corrida completa](#corrida-completa-de-la-entrega), el repositorio debe
    estar sin cambios sin guardar.
-   <!-- TODO(#168): probar este camino antes de subir el PR -->
+   Este camino entrena las 18 corridas de la entrega, así que tarda; la corrida oficial usó el paquete del equipo.
 
 ### Levantar y apagar
 
@@ -911,7 +911,7 @@ Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno ne
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 303 pruebas de tests/ <!-- TODO(#168): actualizar con make test después del #182 -->
+make test            # las 328 pruebas de tests/
 make test-fast       # las mismas sin las 5 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt y requirements-api.txt
@@ -959,8 +959,7 @@ MiBici y todas corren en el CI.
 | `api/test_esquemas.py` | Los esquemas de P1 y P2 tienen las variables de la firma del modelo y sus ejemplos son válidos | 4 |
 | `modeling/test_reentrenar.py` | El challenger es una versión nueva con los mismos hiperparámetros, sin filas de octubre, y el champion no se mueve | 2 |
 | `ab_testing/test_ab_testing.py` | Regla de decisión: se promueve un challenger claramente mejor y no uno idéntico o peor. El p-valor es por estación y no por fila, el intervalo bootstrap es reproducible y más ancho al remuestrear estaciones, y los aliases solo se mueven con `--promover` | 11 |
-| `carga/` | Escenario de Locust, muestreo de CPU y memoria y cálculo del costo por inferencia (#182) | <!-- TODO(#168) --> |
-| `ci/` | Pruebas del pipeline de CI | <!-- TODO(#168) --> |
+| `carga/` | Escenario de Locust, muestreo de CPU y memoria y cálculo del costo por inferencia (#182) | 25 |
 | `monitoreo/test_drift.py` | Drift con Evidently sobre datos sintéticos: marca una variable numérica o categórica desplazada y no una idéntica. Los periodos no se traslapan, no entran columnas personales y la evaluación por mes detecta el mes con drift y mayor error | 11 |
 
 **Reproducibilidad.** `test_reproducibilidad.py` entrena dos veces con `SEMILLA` un candidato de
@@ -1160,7 +1159,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── ab_testing/          # tabla del A/B de P1 (p1_ab.csv)
 │   ├── carga/               # resultados de make carga y make finops (CSV, locust.html, maquina.json)
 │   └── figures/semana10/    # gráficas de carga y capturas de la entrega 6
-├── tests/                   # pruebas unitarias, ordenadas como mi_bici/, con carga/ y ci/
+├── tests/                   # pruebas unitarias, ordenadas como mi_bici/; carga/ y ci/ (modelos falsos del CI)
 ├── docs/                    # documentación con mkdocs
 ├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make drift, make reentrenar, make ab-test, make test, make test-fast, make lint, make security, make api, make image, make container, make sistema, make sistema-abajo, make carga, make finops
 ├── docker-compose.yml       # servicios mlflow y api, red mibici, volumen mlflow-datos y healthchecks

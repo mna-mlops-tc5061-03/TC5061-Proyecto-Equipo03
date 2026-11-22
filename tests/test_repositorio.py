@@ -17,11 +17,18 @@ EXTENSIONES_PROHIBIDAS = (".db", ".sqlite", ".parquet", ".csv", ".pkl", ".joblib
 CARPETAS_PROHIBIDAS = ("mlruns", "mlartifacts")
 # Lo único de data/ y models/ que sí va a Git
 PERMITIDOS = {"data/manifest.json", "models/.gitkeep"}
-# Tablas de la corrida oficial (#141): métricas agregadas, sin filas de datos
+# Tablas de las corridas oficiales (#141 y #167): métricas agregadas, sin filas de datos
 CSV_PERMITIDOS = {
     "reports/evidently/p1_drift.csv",
     "reports/evidently/p1_por_mes.csv",
     "reports/ab_testing/p1_ab.csv",
+    "reports/carga/locust_stats.csv",
+    "reports/carga/locust_stats_history.csv",
+    "reports/carga/locust_failures.csv",
+    "reports/carga/locust_exceptions.csv",
+    "reports/carga/recursos.csv",
+    "reports/carga/escalones.csv",
+    "reports/carga/finops.csv",
 }
 
 # Rutas de ejemplo que el .gitignore debe ignorar y las que debe dejar pasar
@@ -49,8 +56,12 @@ PATRONES_CREDENCIALES = {
     # Usuario y contraseña dentro de una URL, como podría quedar MLFLOW_TRACKING_URI
     "credenciales en URL": r"\b[a-z][a-z0-9+.\-]*://[^\s/:@'\"]+:[^\s/@'\"]+@",
 }
-# El JavaScript del reporte de Evidently trae `password:!0` (tipos de campo), que no es una clave
-EXCEPCIONES_CREDENCIALES = {"clave": {"reports/evidently/p1_drift.html"}}
+# El JavaScript de los reportes de Evidently y Locust trae `password:!0` (tipos de campo) y
+# una función `Token`, que no son credenciales
+EXCEPCIONES_CREDENCIALES = {
+    "clave": {"reports/evidently/p1_drift.html", "reports/carga/locust.html"},
+    "token": {"reports/carga/locust.html"},
+}
 
 
 def git(*args: str) -> subprocess.CompletedProcess:

@@ -836,10 +836,8 @@ Los puertos se publican solo en `127.0.0.1`. La API se prueba igual que en
 | `API_PUERTO` | `8000` | Puerto de la API en el host |
 | `MLFLOW_DATOS` | volumen `mlflow-datos` | Carpeta con un Registry existente |
 | `MODELO_URI`, `MODELO_URI_P1` | `@champion` de P2 y P1 | Servir otra versión, como en la [entrega 4](#2-construir-y-correr-el-contenedor) |
-| `API_CPUS` | 2 vCPU | Límite de CPU de la API: el tamaño de la instancia del análisis FinOps |
-| `API_MEMORIA` | 4 GiB | Límite de memoria de la API |
-
-<!-- TODO(#168): confirmar los valores por defecto de API_CPUS y API_MEMORIA con .env.example -->
+| `API_CPUS` | `2` | Límite de CPU de la API: el tamaño de la instancia del análisis FinOps |
+| `API_MEMORIA` | `4g` | Límite de memoria de la API |
 
 **Podman:** `make sistema MOTOR=podman` usa `podman-compose`.
 

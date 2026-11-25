@@ -42,6 +42,8 @@ IGNORADAS = (
     "mlartifacts/1/modelo/model.skops",
     "models/modelo.pkl",
     "reports/deepchecks/resumen.json",
+    "reports/ct/evidently/p1_drift.html",
+    "reports/ct/ab_testing/p1_ab.csv",
 )
 NO_IGNORADAS = ("data/manifest.json", ".env.example", "models/.gitkeep")
 

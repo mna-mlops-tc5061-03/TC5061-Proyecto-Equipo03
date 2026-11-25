@@ -32,8 +32,8 @@ from mi_bici.config import (
     ALIAS_PRODUCCION,
     ALIAS_RESPALDO,
     COLUMNA_PREDICCION,
+    CT_DIR,
     EQUIPO,
-    EVIDENTLY_DIR,
     EXPERIMENT_NAME,
     MODELOS_REGISTRO,
     OBJETIVO_P1,
@@ -52,10 +52,13 @@ def evaluar_disparador(
     mae_referencia: float,
     tolerancia: float = TOLERANCIA_MAE_P1,
 ) -> dict:
-    """Evalúa si algún mes supera la regla `MAE > (1 + tolerancia) × mae_referencia`.
+    """Lee de la tabla mensual de monitoreo qué meses activaron la bandera `reentrenar`.
+
+    Usa la columna `reentrenar` calculada por `monitoreo.evaluar_por_mes` como única fuente de
+    verdad para que el CT no se desincronice si cambia la regla de monitoreo.
 
     Args:
-        por_mes: Tabla mensual de monitoreo con `mes` y `mae_champion`.
+        por_mes: Tabla mensual de monitoreo con `mes`, `mae_champion` y `reentrenar`.
         mae_referencia: MAE del champion en el periodo de referencia.
         tolerancia: Margen permitido sobre `mae_referencia` (`TOLERANCIA_MAE_P1` de `config.py`).
 
@@ -65,9 +68,11 @@ def evaluar_disparador(
     """
     if por_mes.empty:
         raise ValueError("La tabla mensual de monitoreo está vacía; no se puede evaluar CT.")
+    if "reentrenar" not in por_mes.columns:
+        raise ValueError("La tabla mensual de monitoreo no incluye la columna `reentrenar`.")
 
     umbral_mae = mae_referencia * (1 + tolerancia)
-    disparados = por_mes[por_mes["mae_champion"] > umbral_mae]
+    disparados = por_mes[por_mes["reentrenar"].astype(bool)]
     peor = por_mes.loc[por_mes["mae_champion"].idxmax()]
     return {
         "disparado": bool(not disparados.empty),
@@ -147,15 +152,19 @@ def ciclo_ct(
     cliente: MlflowClient | None = None,
     nombre: str = MODELOS_REGISTRO["P1"],
     promover: bool = False,
-    evidently_dir: Path = EVIDENTLY_DIR,
+    salida_dir: Path = CT_DIR,
 ) -> dict:
     """Ejecuta el ciclo CT completo de P1 y registra el run final de decisión en MLflow.
+
+    Escribe los archivos intermedios de monitoreo y A/B en `salida_dir` (`reports/ct/` por defecto,
+    ignorado en Git) para no sobrescribir la evidencia oficial en `reports/evidently/` ni
+    `reports/ab_testing/` ni dejar el repositorio con cambios antes de reentrenar.
 
     Args:
         cliente: Cliente de MLflow. Si es `None`, conecta con `TRACKING_URI` y crea uno.
         nombre: Nombre del modelo registrado de P1.
         promover: Si es `True`, mueve `@champion` cuando el A/B favorece al challenger.
-        evidently_dir: Carpeta donde se guardan las salidas de monitoreo de Evidently.
+        salida_dir: Carpeta de trabajo temporal para monitoreo y A/B (`CT_DIR` por defecto).
 
     Returns:
         Resumen del ciclo con `decision`, `motivo`, `disparado`, `promovido`, versiones inicial y
@@ -166,6 +175,8 @@ def ciclo_ct(
         cliente = MlflowClient()
 
     version_inicial = str(cliente.get_model_version_by_alias(nombre, ALIAS_PRODUCCION).version)
+    evidently_dir = salida_dir / "evidently"
+    ab_dir = salida_dir / "ab_testing"
 
     # 1. Monitoreo (deja su run stage_of_work=monitoring en MLflow)
     referencia, actual = monitoreo.conjuntos()
@@ -191,7 +202,9 @@ def ciclo_ct(
     if disparador["disparado"]:
         resumen_reentreno = reentrenar.reentrenar(cliente, nombre=nombre)
         version_challenger = resumen_reentreno["challenger"]
-        _, resultado_ab = ab_testing.ab_test(cliente, nombre=nombre, mover=promover)
+        _, resultado_ab = ab_testing.ab_test(
+            cliente, nombre=nombre, mover=promover, salida_dir=ab_dir
+        )
 
     decision, motivo, promovido = decidir_ct(
         disparador,

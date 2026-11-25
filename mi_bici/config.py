@@ -115,6 +115,8 @@ CORTE_AB = "2026-10-01"
 ALFA_AB = 0.05
 N_BOOTSTRAP = 2000
 AB_DIR = REPORTS_DIR / "ab_testing"
+# Salidas temporales del ciclo CT (ignoradas en Git; los artefactos oficiales quedan en MLflow)
+CT_DIR = REPORTS_DIR / "ct"
 
 # Métrica con que se elige el modelo de cada pregunta y si mayor es mejor. Un candidato se acepta
 # si le gana al baseline en esta métrica en validación y también en prueba. P3 no tiene prueba y

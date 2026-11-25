@@ -14,15 +14,17 @@ from typer.testing import CliRunner
 
 from mi_bici import ab_testing, ct, monitoreo
 from mi_bici.config import (
+    AB_DIR,
     ALIAS_PRODUCCION,
     ALIAS_RESPALDO,
     CORTE_AB,
+    CT_DIR,
+    EVIDENTLY_DIR,
     EXPERIMENT_NAME,
     MODELOS_REGISTRO,
     PERIODO_ACTUAL,
     PERIODO_REFERENCIA,
     PROJ_ROOT,
-    TOLERANCIA_MAE_P1,
     VARIABLES_P1,
 )
 from mi_bici.modeling import base, reentrenar
@@ -76,7 +78,6 @@ def entorno_ct(tmp_path, monkeypatch):
         monkeypatch.setattr(modulo, "TRACKING_URI", uri)
     mlflow.create_experiment(EXPERIMENT_NAME, artifact_location=(tmp_path / "artefactos").as_uri())
     mlflow.set_experiment(EXPERIMENT_NAME)
-    monkeypatch.setattr(ab_testing, "AB_DIR", tmp_path / "ab_testing")
 
     def preparar(desplazamiento_actual: float) -> tuple[MlflowClient, pd.DataFrame]:
         datos = _demanda_ct(desplazamiento_actual)
@@ -105,30 +106,45 @@ def entorno_ct(tmp_path, monkeypatch):
         cliente.set_registered_model_alias(NOMBRE, ALIAS_PRODUCCION, version)
         return cliente, datos
 
-    yield preparar, tmp_path / "evidently"
+    yield preparar, tmp_path / "ct"
     mlflow.set_tracking_uri(uri_previa)
 
 
 class TestReglaDisparador:
-    def test_disparador_sigue_tolerancia_de_config(self):
-        """Verifica el corte exacto `MAE > (1 + TOLERANCIA_MAE_P1) × mae_referencia`."""
+    def test_disparador_usa_columna_reentrenar_como_unica_fuente_de_verdad(self):
+        """Verifica que `evaluar_disparador` obedece `por_mes['reentrenar']` sin duplicar la regla."""
         mae_ref = 5.0
-        limite = mae_ref * (1 + TOLERANCIA_MAE_P1)
 
-        justo_en_limite = pd.DataFrame(
-            {"mes": ["2026-08", "2026-09"], "mae_champion": [4.5, limite]}
+        # Aunque el MAE esté arriba de 1.15×, si monitoreo marcó reentrenar=False no dispara
+        sin_disparo = pd.DataFrame(
+            {
+                "mes": ["2026-08", "2026-09"],
+                "mae_champion": [4.5, 9.0],
+                "reentrenar": [False, False],
+            }
         )
-        res_no = ct.evaluar_disparador(justo_en_limite, mae_ref)
+        res_no = ct.evaluar_disparador(sin_disparo, mae_ref)
         assert not res_no["disparado"]
         assert res_no["meses_disparados"] == []
 
-        por_encima = pd.DataFrame(
-            {"mes": ["2026-08", "2026-09", "2026-10"], "mae_champion": [4.5, limite + 0.1, 7.0]}
+        # Y si monitoreo marcó reentrenar=True, dispara aunque el MAE esté debajo de 1.15×
+        con_disparo = pd.DataFrame(
+            {
+                "mes": ["2026-08", "2026-09", "2026-10"],
+                "mae_champion": [4.5, 5.1, 7.0],
+                "reentrenar": [False, True, True],
+            }
         )
-        res_si = ct.evaluar_disparador(por_encima, mae_ref)
+        res_si = ct.evaluar_disparador(con_disparo, mae_ref)
         assert res_si["disparado"]
         assert res_si["meses_disparados"] == ["2026-09", "2026-10"]
         assert res_si["mes_peor"] == "2026-10"
+
+    def test_ct_escribe_en_carpeta_propia_sin_tocar_evidently_ni_ab_oficiales(self):
+        """Verifica que la carpeta por defecto de CT (`CT_DIR`) es distinta de las versionadas."""
+        assert CT_DIR != EVIDENTLY_DIR
+        assert CT_DIR != AB_DIR
+        assert CT_DIR.name == "ct"
 
     def test_cli_no_promueve_por_defecto_y_activa_con_bandera(self, monkeypatch):
         """Verifica que `python -m mi_bici.ct` pasa `promover=False` salvo con `--promover`."""
@@ -176,11 +192,13 @@ class TestCicloCT:
     @pytest.mark.lento
     def test_ct_sin_promover_corre_punta_a_punta_sin_mover_champion(self, entorno_ct):
         """Con disparador activo y A/B favorable, sin `PROMOVER=1` `@champion` queda en v1."""
-        preparar, evidently_dir = entorno_ct
+        preparar, salida_dir = entorno_ct
         cliente, _ = preparar(desplazamiento_actual=30.0)
 
-        resumen = ct.ciclo_ct(cliente, promover=False, evidently_dir=evidently_dir)
+        resumen = ct.ciclo_ct(cliente, promover=False, salida_dir=salida_dir)
 
+        assert (salida_dir / "evidently" / "p1_por_mes.csv").exists()
+        assert (salida_dir / "ab_testing" / "p1_ab.csv").exists()
         assert resumen["disparado"] is True
         assert resumen["decision"] == "aprobado_sin_promover"
         assert resumen["promovido"] is False
@@ -205,10 +223,10 @@ class TestCicloCT:
     @pytest.mark.lento
     def test_ct_con_promover_mueve_champion_a_nueva_y_challenger_a_anterior(self, entorno_ct):
         """Con `PROMOVER=1` y A/B favorable, `@champion` pasa a v2 y `@challenger` a v1."""
-        preparar, evidently_dir = entorno_ct
+        preparar, salida_dir = entorno_ct
         cliente, _ = preparar(desplazamiento_actual=30.0)
 
-        resumen = ct.ciclo_ct(cliente, promover=True, evidently_dir=evidently_dir)
+        resumen = ct.ciclo_ct(cliente, promover=True, salida_dir=salida_dir)
 
         assert resumen["disparado"] is True
         assert resumen["decision"] == "promovido"
@@ -225,10 +243,10 @@ class TestCicloCT:
     @pytest.mark.lento
     def test_ct_sin_disparador_no_reentrena_ni_corre_ab(self, entorno_ct):
         """Si ningún mes supera `1.15 × referencia`, no se reentrena ni se crea v2."""
-        preparar, evidently_dir = entorno_ct
+        preparar, salida_dir = entorno_ct
         cliente, _ = preparar(desplazamiento_actual=0.0)
 
-        resumen = ct.ciclo_ct(cliente, promover=True, evidently_dir=evidently_dir)
+        resumen = ct.ciclo_ct(cliente, promover=True, salida_dir=salida_dir)
 
         assert resumen["disparado"] is False
         assert resumen["decision"] == "sin_reentrenamiento"
@@ -245,7 +263,7 @@ class TestCicloCT:
     @pytest.mark.lento
     def test_ct_con_promover_pero_ab_desfavorable_mantiene_champion(self, entorno_ct, monkeypatch):
         """Aunque `PROMOVER=1` y el disparador se active, si el A/B rechaza no mueve `@champion`."""
-        preparar, evidently_dir = entorno_ct
+        preparar, salida_dir = entorno_ct
         cliente, _ = preparar(desplazamiento_actual=30.0)
 
         ab_original = ab_testing.comparar
@@ -256,7 +274,7 @@ class TestCicloCT:
 
         monkeypatch.setattr(ab_testing, "comparar", comparar_desfavorable)
 
-        resumen = ct.ciclo_ct(cliente, promover=True, evidently_dir=evidently_dir)
+        resumen = ct.ciclo_ct(cliente, promover=True, salida_dir=salida_dir)
 
         assert resumen["disparado"] is True
         assert resumen["decision"] == "mantener"

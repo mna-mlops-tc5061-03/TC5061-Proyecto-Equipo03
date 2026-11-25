@@ -7,6 +7,10 @@
 # a generar con python -m mi_bici.validacion
 /reports/deepchecks/
 
+# Salidas del ciclo CT (make ct): los artefactos quedan en MLflow para no sobrescribir
+# la evidencia oficial versionada en reports/evidently/ ni reports/ab_testing/
+/reports/ct/
+
 # MLflow: base de tracking, corridas y artefactos locales
 mlflow.db
 mlruns/

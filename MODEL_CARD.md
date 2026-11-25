@@ -4,7 +4,7 @@ Ficha de los modelos que el proyecto tiene en producción, con la estructura de 
 
 | | Modelo en el Registry | `@champion` | `@challenger` | Lo sirve la API |
 |---|---|---|---|---|
-| **P1** Demanda | `mibici-equipo03-p1-demanda` | v1 | v2 (v3 en la corrida de la entrega 5) | `POST /predict/demanda` |
+| **P1** Demanda | `mibici-equipo03-p1-demanda` | v1 | v3 (reentrenada hasta septiembre de 2026; es la del A/B) | `POST /predict/demanda` |
 | **P2** Riesgo | `mibici-equipo03-p2-riesgo` | v1 | v2 | `POST /predict/riesgo` |
 | **P3** Grupos | `mibici-equipo03-p3-grupos` | v1 | v2 | no |
 
@@ -17,7 +17,12 @@ Ficha de los modelos que el proyecto tiene en producción, con la estructura de 
   - Sebastián Estrada García.
 
   Es el proyecto integrador de TC5061 Operaciones de aprendizaje automático, del Tecnológico de Monterrey (noviembre de 2026).
-- **Linaje:** todas las versiones del Registry se entrenaron desde el commit `46b18e1`, con `git_dirty=False` y los datos `data_version = 4ab2182e7493`. Cada versión guarda su `source_run`, su `git_commit` y su `data_version` como etiquetas, además de una descripción con su métrica contra el baseline.
+- **Licencia:** el repositorio no declara una licencia: es trabajo académico del curso. Los datos son los abiertos de MiBici.
+- **Linaje:**
+  - las v1 y v2 salen del commit `46b18e1`, con `git_dirty=False` y los datos `data_version = 4ab2182e7493`;
+  - la v3 de P1 sale de `make reentrenar`, con el commit `b7ada04` y los datos `e565b1d042ab` (`fecha_fin` 2026-09-30).
+
+  Cada versión guarda su `source_run`, su `git_commit` y su `data_version` como etiquetas, además de una descripción con su métrica contra el baseline. El Registry oficial es el de las corridas de las entregas 5 y 6.
 - **Estado de producción:**
   - `@champion` es la versión que se usa;
   - `@challenger` es la siguiente candidata;
@@ -79,7 +84,16 @@ Ficha de los modelos que el proyecto tiene en producción, con la estructura de 
 - Se comparó contra la v3, reentrenada con dos meses más, sobre las 14,540 filas de octubre de 2026.
 - La v3 mejora el MAE en 0.09 viajes (1.2 %), con un IC 95 % de [+0.040, +0.156].
 - Pero el Wilcoxon por estación da p = 0.198, así que la regla fijada antes (IC a favor y p < 0.05) dice **mantener la v1**.
-- La mejora se concentra en el 25 % de estaciones con más demanda.
+
+**Evaluación por segmentos** (exploratoria; entrega 5, Tabla 4 del reporte de drift y A/B):
+
+| Segmento | ΔMAE (v1 − v3, viajes) |
+|---|---|
+| Días hábiles | +0.060 |
+| Fin de semana | +0.163 |
+
+- La mejora de la v3 se concentra en el 25 % de estaciones con más demanda.
+- Los desgloses son exploratorios: la regla de decisión solo usa el MAE total.
 
 **Limitaciones.**
 - Puede dar predicciones negativas, que no tienen sentido al contar viajes: el mínimo fue de −30.44 en el periodo de referencia y de −5.08 en el actual (entrega 5). Quien lo use debe tomar el máximo entre la predicción y 0.
@@ -90,7 +104,7 @@ Ficha de los modelos que el proyecto tiene en producción, con la estructura de 
 
 **Detalles.**
 - `HistGradientBoostingClassifier` con `class_weight` balanced;
-- `learning_rate` 0.05, `max_iter` 100, semilla 42;
+- `learning_rate` 0.05, `max_iter` 100, `max_leaf_nodes` 127, semilla 42;
 - run `a8438298e9e84b38a7d8a35f2254b830`.
 
 **Uso previsto.** Marca las estaciones en riesgo de quedarse sin bicis o sin anclajes en el siguiente bloque de 3 horas, para decidir a cuáles manda el camión de rebalanceo.

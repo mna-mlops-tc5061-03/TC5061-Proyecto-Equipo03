@@ -22,7 +22,7 @@ Ficha de los modelos que el proyecto tiene en producción, con la estructura de 
   - las v1 y v2 salen del commit `46b18e1`, con `git_dirty=False` y los datos `data_version = 4ab2182e7493`;
   - la v3 de P1 sale de `make reentrenar`, con el commit `b7ada04` y los datos `e565b1d042ab` (`fecha_fin` 2026-09-30).
 
-  Cada versión guarda su `source_run`, su `git_commit` y su `data_version` como etiquetas, además de una descripción con su métrica contra el baseline. El Registry oficial es el de las corridas de las entregas 5 y 6.
+  Cada versión guarda su `source_run`, su `git_commit` y su `data_version` como etiquetas, además de una descripción con su métrica contra el baseline o, en la v3, de dónde sale. El Registry oficial es el de las corridas de las entregas 5 y 6.
 - **Estado de producción:**
   - `@champion` es la versión que se usa;
   - `@challenger` es la siguiente candidata;

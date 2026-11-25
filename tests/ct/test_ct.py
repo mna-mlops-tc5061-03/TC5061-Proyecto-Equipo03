@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import mlflow
 from mlflow import MlflowClient
@@ -145,6 +146,57 @@ class TestReglaDisparador:
         assert CT_DIR != EVIDENTLY_DIR
         assert CT_DIR != AB_DIR
         assert CT_DIR.name == "ct"
+
+    def test_challenger_vigente_valida_source_version_fecha_fin_y_data_version(self):
+        """Solo reutiliza `@challenger` cuando coinciden los tres tags; si cambia uno, reentrena."""
+
+        class _ClienteFalso:
+            def __init__(self, tags):
+                self.tags = tags
+
+            def get_model_version_by_alias(self, nombre, alias):
+                if self.tags is None:
+                    raise mlflow.exceptions.MlflowException("sin alias")
+                return SimpleNamespace(version="5", run_id="run_reentreno", tags=self.tags)
+
+        tags_ok = {
+            "source_version": "4",
+            "fecha_fin": reentrenar.ULTIMO_DIA,
+            "data_version": "hash123",
+        }
+        assert ct.challenger_vigente(
+            _ClienteFalso(tags_ok), NOMBRE, "4", data_version="hash123"
+        ) == {"challenger": "5", "run_id": "run_reentreno"}
+        assert (
+            ct.challenger_vigente(_ClienteFalso(None), NOMBRE, "4", data_version="hash123") is None
+        )
+        assert (
+            ct.challenger_vigente(
+                _ClienteFalso({**tags_ok, "source_version": "3"}),
+                NOMBRE,
+                "4",
+                data_version="hash123",
+            )
+            is None
+        )
+        assert (
+            ct.challenger_vigente(
+                _ClienteFalso({**tags_ok, "fecha_fin": "2026-08-31"}),
+                NOMBRE,
+                "4",
+                data_version="hash123",
+            )
+            is None
+        )
+        assert (
+            ct.challenger_vigente(
+                _ClienteFalso({**tags_ok, "data_version": "otro_hash"}),
+                NOMBRE,
+                "4",
+                data_version="hash123",
+            )
+            is None
+        )
 
     def test_cli_no_promueve_por_defecto_y_activa_con_bandera(self, monkeypatch):
         """Verifica que `python -m mi_bici.ct` pasa `promover=False` salvo con `--promover`."""
@@ -289,3 +341,23 @@ class TestCicloCT:
         )
         assert json.loads(Path(ruta_json).read_text(encoding="utf-8"))["decision"] == "mantener"
         assert pd.Timestamp(CORTE_AB) == pd.Timestamp("2026-10-01")
+
+    @pytest.mark.lento
+    def test_ct_dos_corridas_reutilizan_challenger_sin_llenar_registry(self, entorno_ct):
+        """Correr `make ct` y luego `make ct PROMOVER=1` reutiliza v2 y no registra v3."""
+        preparar, salida_dir = entorno_ct
+        cliente, _ = preparar(desplazamiento_actual=30.0)
+
+        primera = ct.ciclo_ct(cliente, promover=False, salida_dir=salida_dir)
+        segunda = ct.ciclo_ct(cliente, promover=True, salida_dir=salida_dir)
+
+        assert primera["reentrenamiento_reutilizado"] is False
+        assert segunda["reentrenamiento_reutilizado"] is True
+        assert segunda["runs"]["reentrenamiento"] == primera["runs"]["reentrenamiento"]
+        # Solo existen v1 y v2: no se creó una v3 duplicada
+        versiones = cliente.search_model_versions(f"name='{NOMBRE}'")
+        assert {str(v.version) for v in versiones} == {"1", "2"}
+        assert str(cliente.get_model_version_by_alias(NOMBRE, ALIAS_PRODUCCION).version) == "2"
+        assert str(cliente.get_model_version_by_alias(NOMBRE, ALIAS_RESPALDO).version) == "1"
+        run_ct = cliente.get_run(segunda["run_id"])
+        assert run_ct.data.params["reentrenamiento_reutilizado"] == "True"

@@ -4,7 +4,8 @@ Encadena los módulos existentes siguiendo las reglas de `config.py`:
 1. Corre el monitoreo de P1 (`mi_bici.monitoreo`) y evalúa si algún mes supera el umbral
    `MAE > (1 + TOLERANCIA_MAE_P1) × mae_referencia`.
 2. Si el disparador se activa, reentrena `@champion` hasta el día antes de `CORTE_AB` y registra la
-   nueva versión como `@challenger` (`mi_bici.modeling.reentrenar`).
+   nueva versión como `@challenger` (`mi_bici.modeling.reentrenar`), o reutiliza el `@challenger`
+   vigente si ya coincide en `source_version`, `fecha_fin` y `data_version`.
 3. Corre el A/B offline sobre el periodo desde `CORTE_AB` (`mi_bici.ab_testing`).
 4. Solo si el A/B aprueba al challenger **y** se pasó `--promover` (`make ct PROMOVER=1`), mueve
    `@champion` a la nueva versión y deja la anterior en `@challenger`.
@@ -91,6 +92,7 @@ def decidir_ct(
     version_inicial: str,
     version_challenger: str | None,
     tolerancia: float = TOLERANCIA_MAE_P1,
+    reutilizado: bool = False,
 ) -> tuple[str, str, bool]:
     """Determina la decisión final del ciclo CT y redacta el motivo auditable.
 
@@ -117,9 +119,10 @@ def decidir_ct(
         f"p={resultado_ab['p_valor']:.3g}"
     )
     if not resultado_ab["promover"]:
+        accion = "se reutilizó" if reutilizado else "se reentrenó"
         motivo = (
             f"Disparador activo en {meses} (MAE máx {disparador['mae_mes_max']:.3f} > "
-            f"{disparador['umbral_mae']:.3f}); se reentrenó v{version_challenger}, pero el A/B "
+            f"{disparador['umbral_mae']:.3f}); {accion} v{version_challenger}, pero el A/B "
             f"no la aprobó ({resumen_ab}). @{ALIAS_PRODUCCION} permanece en v{version_inicial}."
         )
         return "mantener", motivo, False
@@ -146,6 +149,40 @@ def _alias_opcional(cliente: MlflowClient, nombre: str, alias: str) -> str | Non
         return str(cliente.get_model_version_by_alias(nombre, alias).version)
     except mlflow.exceptions.MlflowException:
         return None
+
+
+def challenger_vigente(
+    cliente: MlflowClient,
+    nombre: str,
+    version_champion: str,
+    fecha_fin: str = reentrenar.ULTIMO_DIA,
+    data_version: str | None = None,
+) -> dict | None:
+    """Devuelve `@challenger` si ya se reentrenó con el mismo champion, ventana y datos.
+
+    Compara los tags `source_version`, `fecha_fin` y `data_version` del `@challenger` actual para
+    que correr `make ct` dos veces con los mismos datos no llene el Registry de versiones repetidas.
+
+    Returns:
+        `{"challenger": version, "run_id": run_id}` si coincide, o `None` si toca reentrenar.
+    """
+    try:
+        actual = cliente.get_model_version_by_alias(nombre, ALIAS_RESPALDO)
+    except mlflow.exceptions.MlflowException:
+        return None
+
+    esperada = version_datos() if data_version is None else data_version
+    tags = actual.tags or {}
+    if (
+        tags.get("source_version") == str(version_champion)
+        and tags.get("fecha_fin") == fecha_fin
+        and tags.get("data_version") == esperada
+    ):
+        return {
+            "challenger": str(actual.version),
+            "run_id": actual.run_id or tags.get("source_run"),
+        }
+    return None
 
 
 def ciclo_ct(
@@ -195,12 +232,24 @@ def ciclo_ct(
     por_mes = pd.read_csv(por_mes_csv)
     disparador = evaluar_disparador(por_mes, mae_referencia)
 
-    # 2 y 3. Reentrenamiento + A/B solo si el disparador se cumplió
+    # 2 y 3. Reentrenamiento (o reutilización de @challenger vigente) + A/B
+    datos_version = version_datos()
     resumen_reentreno: dict | None = None
+    reutilizado = False
     resultado_ab: dict | None = None
     version_challenger: str | None = None
     if disparador["disparado"]:
-        resumen_reentreno = reentrenar.reentrenar(cliente, nombre=nombre)
+        vigente = challenger_vigente(cliente, nombre, version_inicial, data_version=datos_version)
+        if vigente is not None:
+            resumen_reentreno = vigente
+            reutilizado = True
+            logger.info(
+                f"Reutilizando {nombre} v{vigente['challenger']} @{ALIAS_RESPALDO} "
+                f"(mismo source_version=v{version_inicial}, fecha_fin={reentrenar.ULTIMO_DIA} "
+                f"y data_version={datos_version})"
+            )
+        else:
+            resumen_reentreno = reentrenar.reentrenar(cliente, nombre=nombre)
         version_challenger = resumen_reentreno["challenger"]
         _, resultado_ab = ab_testing.ab_test(
             cliente, nombre=nombre, mover=promover, salida_dir=ab_dir
@@ -212,6 +261,7 @@ def ciclo_ct(
         promover=promover,
         version_inicial=version_inicial,
         version_challenger=version_challenger,
+        reutilizado=reutilizado,
     )
     champion_final = str(cliente.get_model_version_by_alias(nombre, ALIAS_PRODUCCION).version)
     challenger_final = _alias_opcional(cliente, nombre, ALIAS_RESPALDO)
@@ -226,6 +276,7 @@ def ciclo_ct(
         "decision": decision,
         "motivo": motivo,
         "disparado": disparador["disparado"],
+        "reentrenamiento_reutilizado": reutilizado,
         "promover_solicitado": bool(promover),
         "promovido": promovido,
         "meses_disparados": disparador["meses_disparados"],
@@ -252,6 +303,7 @@ def ciclo_ct(
             "modelo_registro": nombre,
             "tolerancia_mae_p1": TOLERANCIA_MAE_P1,
             "disparador_activo": disparador["disparado"],
+            "reentrenamiento_reutilizado": reutilizado,
             "promover_solicitado": bool(promover),
             "promovido": promovido,
             "meses_disparados": ",".join(disparador["meses_disparados"]) or "ninguno",
@@ -261,7 +313,7 @@ def ciclo_ct(
             "run_monitoreo": run_monitoreo,
             "run_reentrenamiento": runs["reentrenamiento"] or "no_ejecutado",
             "run_ab_test": runs["ab_test"] or "no_ejecutado",
-            "data_version": version_datos(),
+            "data_version": datos_version,
         }
         mlflow.log_params(parametros)
 

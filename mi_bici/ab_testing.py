@@ -10,6 +10,7 @@ python -m mi_bici.ab_testing --promover
 """
 
 import json
+from pathlib import Path
 
 from loguru import logger
 import mlflow
@@ -176,13 +177,19 @@ def promover(cliente: MlflowClient, nombre: str, champion: str, challenger: str)
     cliente.set_registered_model_alias(nombre, ALIAS_RESPALDO, champion)
 
 
-def ab_test(cliente: MlflowClient, nombre: str = MODELOS_REGISTRO["P1"], mover: bool = False):
+def ab_test(
+    cliente: MlflowClient,
+    nombre: str = MODELOS_REGISTRO["P1"],
+    mover: bool = False,
+    salida_dir: Path | None = None,
+):
     """Corre el A/B de P1, lo registra en MLflow y guarda la tabla.
 
     Args:
         cliente: Cliente de MLflow.
         nombre: Nombre del modelo registrado.
         mover: Si se mueven los aliases cuando la regla favorece al challenger.
+        salida_dir: Carpeta donde se guarda `p1_ab.csv`. Si es `None`, usa `AB_DIR`.
 
     Returns:
         La tabla de métricas y el resultado de la comparación, con las versiones y el Run ID.
@@ -204,8 +211,9 @@ def ab_test(cliente: MlflowClient, nombre: str = MODELOS_REGISTRO["P1"], mover: 
     resultado = comparar(datos, pred_a, pred_b)
     logger.info(f"A/B de {nombre} con {len(datos)} filas:\n{tabla.to_string(index=False)}")
 
-    AB_DIR.mkdir(parents=True, exist_ok=True)
-    ruta = AB_DIR / "p1_ab.csv"
+    carpeta = AB_DIR if salida_dir is None else salida_dir
+    carpeta.mkdir(parents=True, exist_ok=True)
+    ruta = carpeta / "p1_ab.csv"
     tabla.to_csv(ruta, index=False)
     mlflow.set_experiment(EXPERIMENT_NAME)
     with mlflow.start_run(run_name="P1-ab-test") as run:

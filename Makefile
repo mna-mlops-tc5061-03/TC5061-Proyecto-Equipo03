@@ -77,6 +77,7 @@ create_environment:
 #################################################################################
 
 ARGS ?=
+PROMOVER ?= 0
 MOTOR ?= docker
 COMPOSE = $(if $(filter podman,$(MOTOR)),podman-compose,docker compose)
 IMAGE_NAME ?= mibici-api
@@ -158,6 +159,12 @@ validar-datos:
 .PHONY: drift
 drift:
 	$(PYTHON_INTERPRETER) -m mi_bici.monitoreo
+
+
+## Ciclo de entrenamiento continuo (P1): drift -> reentrenar -> A/B. Con PROMOVER=1 promueve si el A/B aprueba
+.PHONY: ct
+ct:
+	$(PYTHON_INTERPRETER) -m mi_bici.ct $(if $(filter 1 true TRUE si SI yes YES,$(PROMOVER)),--promover)
 
 
 ## Prueba de carga con Locust contra la API, midiendo CPU y memoria de los contenedores

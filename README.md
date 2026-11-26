@@ -34,8 +34,8 @@ requisitos.
 
 | Paso | Comando | Qué deja |
 |---|---|---|
-| 1. Entorno y datos | `make requirements` y `make data` | Dependencias instaladas, viajes y estaciones en `data/` y `data/manifest.json` ([Instalación](#instalación) y [Datos](#datos)) |
-| 2. Experimentos y Registry | `docker compose up -d --wait mlflow` y `make experimentos registry` | Los runs en MLflow y `@champion` y `@challenger` de P1, P2 y P3 ([Primera vez: llenar el Registry](#primera-vez-llenar-el-registry)) |
+| 1. Entorno y datos | `make requirements`, `cp .env.example .env` y `make data` | Dependencias instaladas, viajes y estaciones en `data/` y `data/manifest.json` ([Instalación](#instalación) y [Datos](#datos)) |
+| 2. Experimentos y Registry | `docker compose up -d --wait mlflow` y `make experimentos registry`, o restaurar el paquete del Registry del equipo con `MLFLOW_DATOS` (el camino de las corridas oficiales) | Los runs en MLflow y `@champion` y `@challenger` de P1, P2 y P3 ([Primera vez: llenar el Registry](#primera-vez-llenar-el-registry)) |
 | 3. Sistema | `make sistema` | MLflow en el puerto 5001 y la API en el 8000, los dos `healthy` ([Levantar y apagar](#levantar-y-apagar)) |
 | 4. Predicción | `curl -s http://127.0.0.1:8000/health` o la documentación en `http://127.0.0.1:8000/docs` | Los modelos cargados y sus predicciones ([Probar la API](#3-probar-la-api)) |
 | 5. Calidad | `make lint`, `make test` y `make security` | Lo mismo que corre el CI en cada PR ([Pruebas y chequeos](#pruebas-y-chequeos)) |
@@ -993,7 +993,8 @@ MiBici y todas corren en el CI.
 | `test_features.py` | Variables de P1, P2 y P3. Límite: festivos, día sin viajes, flujo justo en el umbral, estación sin capacidad o con pocos días, y que ninguna use información del día que se predice | 28 |
 | `test_validacion.py` | DeepChecks con datos sintéticos: detecta nulos, duplicados, una variable desplazada y un cambio en la tasa del objetivo, y el resumen no copia filas y dice si la tabla pasa | 14 |
 | `test_repositorio.py` | Que no se versionen credenciales (también usuario y contraseña dentro de una URL), `.env`, datos, bases, modelos ni las salidas de `make ct` | 31 |
-| `modeling/test_base.py` | Registro común de cada run: catálogo, hiperparámetros y modelo desconocido | 5 |
+| `test_dataset_carga.py` | Lectura acotada de los viajes: por defecto nada después de `FECHA_FIN`, incluye todo el último día, otro tope o sin tope, y filtra aunque no se pida inicio | 4 |
+| `modeling/test_base.py` | Registro común de cada run: catálogo, hiperparámetros y modelo desconocido | 10 |
 | `modeling/test_evaluate.py` | Métricas por tarea. Límite: ningún bloque en riesgo y un solo grupo | 4 |
 | `modeling/test_p1.py`, `test_p2.py` y `test_p3.py` | Modelos de cada pregunta: escalado, balanceo, umbral de P2 y estabilidad de P3 | 18 |
 | `modeling/test_registry.py` | `make registry`: elige al que gana en validación y en prueba, solo con runs limpios y los mismos datos, y descarta un candidato inestable de P3 | 8 |

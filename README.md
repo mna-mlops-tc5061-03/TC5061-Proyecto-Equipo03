@@ -3,13 +3,19 @@
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
+<a href="https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/actions/workflows/ci.yml">
+    <img src="https://github.com/mna-mlops-tc5061-03/TC5061-Proyecto-Equipo03/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" />
+</a>
 
 Proyecto de ML para el sistema MiBici. Con los viajes que publica el
 [portal de datos abiertos](https://mibici.net/es/datos-abiertos/) se responden tres preguntas de
 operación: demanda por estación (regresión), riesgo de quedarse sin bicis o sin anclajes
 (clasificación) y grupos de estaciones con patrones de uso parecidos (clustering). Los experimentos
 se registran en MLflow, los mejores modelos quedan en el Model Registry y los de P1 y P2 se sirven
-como API REST en un contenedor. MLflow y la API se levantan juntos con Docker Compose.
+como API REST en un contenedor. MLflow y la API se levantan juntos con Docker Compose. El drift de
+P1 se monitorea con Evidently, un A/B offline decide si cambia la versión en producción, `make ct`
+encadena el ciclo de reentrenamiento y el [Model Card](MODEL_CARD.md) documenta los modelos en
+producción.
 
 | Entrega | Dónde está |
 |---|---|
@@ -19,6 +25,23 @@ como API REST en un contenedor. MLflow y la API se levantan juntos con Docker Co
 | 4. API REST en contenedor | [Despliegue de la API con Docker](#despliegue-de-la-api-con-docker) |
 | 5. Monitoreo, drift y A/B testing | [Monitoreo, drift y A/B testing](#monitoreo-drift-y-ab-testing) y `reports/TC5061_Drift_ABTest_Equipo03.pdf` |
 | 6. Compose, CI/CD, pruebas de carga y FinOps | [Operación con Compose, CI/CD y pruebas de carga](#operación-con-compose-cicd-y-pruebas-de-carga) y `reports/TC5061_Operacion_FinOps_Equipo03.pdf` |
+| 7. Proyecto final | [Recorrido rápido](#recorrido-rápido), [Model Card](MODEL_CARD.md) y [ciclo de entrenamiento continuo](#ciclo-de-entrenamiento-continuo-ct). La presentación y el video se entregan en Canvas |
+
+## Recorrido rápido
+
+El ciclo completo desde un clon limpio. Cada paso liga a su sección, donde están los detalles y los
+requisitos.
+
+| Paso | Comando | Qué deja |
+|---|---|---|
+| 1. Entorno y datos | `make requirements`, `cp .env.example .env` y `make data` | Dependencias instaladas, viajes y estaciones en `data/` y `data/manifest.json` ([Instalación](#instalación) y [Datos](#datos)) |
+| 2. Experimentos y Registry | `docker compose up -d --wait mlflow` y `make experimentos registry`, o restaurar el paquete del Registry del equipo con `MLFLOW_DATOS` (el camino de las corridas oficiales) | Los runs en MLflow y `@champion` y `@challenger` de P1, P2 y P3 ([Primera vez: llenar el Registry](#primera-vez-llenar-el-registry)) |
+| 3. Sistema | `make sistema` | MLflow en el puerto 5001 y la API en el 8000, los dos `healthy` ([Levantar y apagar](#levantar-y-apagar)) |
+| 4. Predicción | `curl -s http://127.0.0.1:8000/health` o la documentación en `http://127.0.0.1:8000/docs` | Los modelos cargados y sus predicciones ([Probar la API](#3-probar-la-api)) |
+| 5. Calidad | `make lint`, `make test` y `make security` | Lo mismo que corre el CI en cada PR ([Pruebas y chequeos](#pruebas-y-chequeos)) |
+| 6. Carga y FinOps | `make carga` y `make finops` | Desempeño, recursos y costo por inferencia en `reports/carga/` ([Pruebas de carga y FinOps](#pruebas-de-carga-y-finops)) |
+| 7. Monitoreo | `make drift` | Reporte de Evidently y tabla mensual en `reports/evidently/` ([Monitoreo, drift y A/B testing](#monitoreo-drift-y-ab-testing)) |
+| 8. Entrenamiento continuo | `make ct` (o `make ct PROMOVER=1`) | Monitoreo, reentrenamiento si hace falta y A/B, con la decisión en el run `P1-ct` ([Ciclo de entrenamiento continuo](#ciclo-de-entrenamiento-continuo-ct)) |
 
 ## Preguntas
 
@@ -265,6 +288,10 @@ dejar grupos de una sola estación y hasta el 96 % de las estaciones en un solo 
 `make registry` aplica además `CRITERIOS_ESTABILIDAD` de `config.py` (`train_silhouette_std <= 0.01`
 y `train_grupo_menor_min >= 0.05` en las 10 semillas de `SEMILLAS_ESTABILIDAD`) y elige un
 `champion` estable en P3 sin mover el alias a mano.
+
+**Model Card.** La ficha de los modelos en producción está en [`MODEL_CARD.md`](MODEL_CARD.md):
+uso previsto y fuera de alcance, datos, métricas contra el baseline, evaluación por segmentos,
+limitaciones, consideraciones éticas, linaje de cada versión y quién aprueba un cambio de versión.
 
 ## Despliegue de la API con Docker
 
@@ -723,7 +750,7 @@ así:
    cubrir varios días de cada tipo), se aplican el intervalo bootstrap por estación y el Wilcoxon.
    El periodo no se acorta aunque los resultados se vean claros antes.
 
-### Disparador de reentrenamiento (CT) propuesto
+### Ciclo de entrenamiento continuo (CT)
 
 Cada mes, `make drift` compara el último mes con la referencia y `evaluar_por_mes` aplica dos reglas
 de `config.py`:
@@ -738,8 +765,28 @@ El 0.5 es el valor por defecto de `DataDriftPreset`. De las 8 columnas, 3 son de
 alerta solo salta cuando se mueven las variables de demanda, el objetivo y la predicción. Las dos
 reglas quedan en las columnas `alerta_drift` y `reentrenar` de `reports/evidently/p1_por_mes.csv`.
 
-Cuando se dispara, el flujo es `make reentrenar` y luego `make ab-test`. El challenger solo entra a
-producción si gana el A/B. Las cifras por mes y la justificación están en el reporte PDF.
+**`make ct` encadena el ciclo** (`mi_bici/ct.py`, #190):
+
+1. Corre el monitoreo y lee la columna `reentrenar` de la tabla mensual.
+2. Si algún mes la activa, reentrena el `@champion` hasta el día antes de `CORTE_AB` y lo registra
+   como `@challenger`. Si el `@challenger` vigente ya tiene el mismo `source_version`, `fecha_fin` y
+   `data_version`, lo reutiliza en lugar de registrar otra versión igual.
+3. Corre el A/B offline sobre octubre.
+4. Solo con `PROMOVER=1` y si el A/B lo aprueba, mueve `@champion` a la versión nueva y deja la
+   anterior en `@challenger`.
+
+```bash
+make ct              # monitorea, reentrena si hace falta y corre el A/B, sin mover @champion
+make ct PROMOVER=1   # lo mismo, y promueve si el A/B lo aprueba
+```
+
+Cada etapa deja su run en MLflow. El run final `P1-ct` (`stage_of_work=ct`) guarda la decisión
+(`sin_reentrenamiento`, `mantener`, `aprobado_sin_promover` o `promovido`), el motivo, los `run_id`
+de cada etapa y `data/decision_ct.json`. Los archivos intermedios van a `reports/ct/`, que no se
+versiona, para no sobrescribir la evidencia oficial de `reports/evidently/` y `reports/ab_testing/`.
+Con los datos actuales el disparador se activa en septiembre y octubre, y el A/B mantiene al
+champion (p = 0.198). Programar `make ct` cada mes, cuando MiBici publica datos nuevos, queda como
+siguiente paso. Las cifras por mes y la justificación están en el reporte PDF de la entrega 5.
 
 **Referencia:** Huyen, C. (2022). *Designing machine learning systems*, cap. 8. O'Reilly Media.
 
@@ -911,8 +958,8 @@ Todo se corre desde la raíz del repositorio con el entorno activado. Ninguno ne
 de MLflow ni el `.env`:
 
 ```bash
-make test            # las 328 pruebas de tests/
-make test-fast       # las mismas sin las 10 lentas, que registran runs en un MLflow temporal
+make test            # las 340 pruebas de tests/
+make test-fast       # las mismas sin las 15 lentas, que registran runs en un MLflow temporal
 make validar-datos   # integridad y drift de los datos procesados con DeepChecks
 make security        # bandit sobre mi_bici/ y pip-audit sobre requirements.txt y requirements-api.txt
 make lint            # formato y estilo con ruff, también de tests/
@@ -945,8 +992,9 @@ MiBici y todas corren en el CI.
 | `test_dataset_manifest.py` | Versión de los datos: el hash cambia si cambia un valor y no depende del orden de las filas ni de los archivos | 5 |
 | `test_features.py` | Variables de P1, P2 y P3. Límite: festivos, día sin viajes, flujo justo en el umbral, estación sin capacidad o con pocos días, y que ninguna use información del día que se predice | 28 |
 | `test_validacion.py` | DeepChecks con datos sintéticos: detecta nulos, duplicados, una variable desplazada y un cambio en la tasa del objetivo, y el resumen no copia filas y dice si la tabla pasa | 14 |
-| `test_repositorio.py` | Que no se versionen credenciales (también usuario y contraseña dentro de una URL), `.env`, datos, bases ni modelos | 29 |
-| `modeling/test_base.py` | Registro común de cada run: catálogo, hiperparámetros y modelo desconocido | 5 |
+| `test_repositorio.py` | Que no se versionen credenciales (también usuario y contraseña dentro de una URL), `.env`, datos, bases, modelos ni las salidas de `make ct` | 31 |
+| `test_dataset_carga.py` | Lectura acotada de los viajes: por defecto nada después de `FECHA_FIN`, incluye todo el último día, otro tope o sin tope, y filtra aunque no se pida inicio | 4 |
+| `modeling/test_base.py` | Registro común de cada run: catálogo, hiperparámetros y modelo desconocido | 10 |
 | `modeling/test_evaluate.py` | Métricas por tarea. Límite: ningún bloque en riesgo y un solo grupo | 4 |
 | `modeling/test_p1.py`, `test_p2.py` y `test_p3.py` | Modelos de cada pregunta: escalado, balanceo, umbral de P2 y estabilidad de P3 | 18 |
 | `modeling/test_registry.py` | `make registry`: elige al que gana en validación y en prueba, solo con runs limpios y los mismos datos, y descarta un candidato inestable de P3 | 8 |
@@ -961,6 +1009,7 @@ MiBici y todas corren en el CI.
 | `ab_testing/test_ab_testing.py` | Regla de decisión: se promueve un challenger claramente mejor y no uno idéntico o peor. El p-valor es por estación y no por fila, el intervalo bootstrap es reproducible y más ancho al remuestrear estaciones, y los aliases solo se mueven con `--promover` | 11 |
 | `carga/` | Escenario de Locust, muestreo de CPU y memoria y cálculo del costo por inferencia (#182) | 25 |
 | `monitoreo/test_drift.py` | Drift con Evidently sobre datos sintéticos: marca una variable numérica o categórica desplazada y no una idéntica. Los periodos no se traslapan, no entran columnas personales y la evaluación por mes detecta el mes con drift y mayor error | 11 |
+| `ct/test_ct.py` | `make ct` de punta a punta contra un Registry temporal: sin disparador no reentrena; con A/B desfavorable mantiene; sin `PROMOVER=1` nunca mueve `@champion`; con `PROMOVER=1` y A/B favorable promueve; dos corridas seguidas reutilizan el challenger; y las salidas van a `reports/ct/` | 10 |
 
 **Reproducibilidad.** `test_reproducibilidad.py` entrena dos veces con `SEMILLA` un candidato de
 cada pregunta (`hgb` de P1, `rf` de P2, y `kmeans` y `gmm` de P3) y compara las predicciones y las
@@ -1106,7 +1155,8 @@ Los cuatro jobs en verde en el PR [#125](https://github.com/mna-mlops-tc5061-03/
 | Pruebas y estilo | Pruebas unitarias en `tests/` y formato del código y de las pruebas revisado con ruff |
 | Secretos fuera del código | Credenciales y URIs en `.env`, que no se versiona |
 | Datos validados | DeepChecks revisa la integridad de los datos y el drift entre entrenamiento y prueba con `make validar-datos` |
-| Monitoreo y reentrenamiento | Evidently mide el drift de P1 cada mes como alerta, y el reentrenamiento se decide con el MAE. Un modelo reentrenado entra a producción solo si gana un A/B con una regla fijada de antemano |
+| Monitoreo y reentrenamiento | Evidently mide el drift de P1 cada mes como alerta, y el reentrenamiento se decide con el MAE. Un modelo reentrenado entra a producción solo si gana un A/B con una regla fijada de antemano. `make ct` encadena el ciclo y no promueve sin `PROMOVER=1` |
+| Documentación del modelo | El [Model Card](MODEL_CARD.md) documenta uso previsto, datos, métricas, limitaciones, ética y linaje de los modelos en producción |
 | Chequeos de seguridad | `make security` corre bandit y pip-audit en cada PR, y `tests/test_repositorio.py` revisa que no se versionen secretos ni datos |
 | Sin credenciales ni datos personales en MLflow | La ingesta elimina los identificadores del viaje y del usuario; género y año de nacimiento solo se agregan por estación; parámetros, métricas y artefactos son agregados |
 | Validación en la API | Pydantic rechaza con 422 campos faltantes, extra o fuera de rango antes de llamar al modelo, y valida también la salida |
@@ -1132,6 +1182,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 │   ├── validacion.py        # validación de los datos con DeepChecks
 │   ├── monitoreo.py         # drift de P1 con Evidently y evolución mensual del drift y del MAE
 │   ├── ab_testing.py        # A/B offline de P1 entre champion y challenger y regla de decisión
+│   ├── ct.py                # make ct: monitoreo, reentrenamiento, A/B y promoción con PROMOVER=1
 │   ├── carga/
 │   │   ├── locustfile.py    # usuario de Locust: consultas de una estación, lotes de 470 y /health
 │   │   ├── escenario.py     # observaciones sintéticas y escalones de la prueba
@@ -1157,16 +1208,18 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ├── reports/                 # reportes PDF de cada entrega y figures/ (capturas por semana)
 │   ├── evidently/           # reporte HTML de drift de P1, tablas CSV y gráfica por mes
 │   ├── ab_testing/          # tabla del A/B de P1 (p1_ab.csv)
+│   ├── ct/                  # salidas intermedias de make ct. No se versiona
 │   ├── carga/               # resultados de make carga y make finops (CSV, locust.html, maquina.json)
 │   └── figures/semana10/    # gráficas de carga y capturas de la entrega 6
 ├── tests/                   # pruebas unitarias, ordenadas como mi_bici/; carga/ y ci/ (modelos falsos del CI)
 ├── docs/                    # documentación con mkdocs
-├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make drift, make reentrenar, make ab-test, make test, make test-fast, make lint, make security, make api, make image, make container, make sistema, make sistema-abajo, make carga, make finops
+├── Makefile                 # make data, make validar-datos, make train, make experimentos, make registry, make drift, make reentrenar, make ab-test, make ct, make test, make test-fast, make lint, make security, make api, make image, make container, make sistema, make sistema-abajo, make carga, make finops
 ├── docker-compose.yml       # servicios mlflow y api, red mibici, volumen mlflow-datos y healthchecks
 ├── .github/workflows/ci.yml # CI/CD: matriz lint, test y security, image, compose, publicar y resumen
 ├── Dockerfile               # imagen de la API: dependencias de inferencia, código y usuario sin privilegios
 ├── .dockerignore            # deja fuera de la imagen los datos, MLflow, .env, pruebas y documentación
 ├── MLproject                # entradas ingest, train y search de MLflow
+├── MODEL_CARD.md            # ficha de los modelos en producción (uso, datos, métricas, límites y ética)
 ├── python_env.yaml          # entorno del MLflow Project
 ├── .env.example             # MLFLOW_TRACKING_URI y las variables del compose (puertos, datos, modelos y límites)
 ├── requirements.txt         # dependencias con versiones fijas
@@ -1175,7 +1228,7 @@ Generada con [Cookiecutter Data Science](https://cookiecutter-data-science.drive
 ```
 
 `.gitignore` excluye los datos de MiBici, `mlflow.db`, `mlruns/`, `mlartifacts/`, `.env`, los
-modelos serializados y los reportes de DeepChecks. De `data/` solo se versiona `data/manifest.json`, la versión de los datos.
+modelos serializados, los reportes de DeepChecks y las salidas de `make ct` (`reports/ct/`). De `data/` solo se versiona `data/manifest.json`, la versión de los datos.
 
 ## Flujo de trabajo
 

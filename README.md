@@ -25,7 +25,7 @@ producción.
 | 4. API REST en contenedor | [Despliegue de la API con Docker](#despliegue-de-la-api-con-docker) |
 | 5. Monitoreo, drift y A/B testing | [Monitoreo, drift y A/B testing](#monitoreo-drift-y-ab-testing) y `reports/TC5061_Drift_ABTest_Equipo03.pdf` |
 | 6. Compose, CI/CD, pruebas de carga y FinOps | [Operación con Compose, CI/CD y pruebas de carga](#operación-con-compose-cicd-y-pruebas-de-carga) y `reports/TC5061_Operacion_FinOps_Equipo03.pdf` |
-| 7. Proyecto final | [Recorrido rápido](#recorrido-rápido), [Model Card](MODEL_CARD.md) y [ciclo de entrenamiento continuo](#ciclo-de-entrenamiento-continuo-ct). La presentación y el video se entregan en Canvas |
+| 7. Proyecto final | [Recorrido rápido](#recorrido-rápido), [Model Card](MODEL_CARD.md) y [ciclo de entrenamiento continuo](#ciclo-de-entrenamiento-continuo-ct). Presentación en `reports/TC5061_Proyecto_Final_Equipo03.pdf` y [video de la demo](https://drive.google.com/file/d/16Mi4l_w2uqUwNYtqkgOZHFEb_-l-fUr4/view?usp=sharing) |
 
 ## Recorrido rápido
 
